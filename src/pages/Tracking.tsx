@@ -23,6 +23,8 @@ import {
   GraduationCap,
   Clock3,
   CheckCircle2,
+  Copy,
+  Check,
 } from 'lucide-react';
 import { useIncidentStore } from '@/store/useIncidentStore';
 import {
@@ -45,6 +47,8 @@ import {
   computeDispatchReview,
   formatDuration,
   communicationRoleColors,
+  generateReviewSummary,
+  ntfRoleToCommRole,
 } from '@/utils';
 import { getResourceLabel, getDispatchStatusLabel, getFaultTypeLabel } from '@/data/mockData';
 import type { CommunicationRole } from '@/types';
@@ -72,6 +76,7 @@ export default function Tracking() {
   const [commName, setCommName] = useState('');
   const [commPhone, setCommPhone] = useState('');
   const [commContent, setCommContent] = useState('');
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -128,6 +133,33 @@ export default function Tracking() {
       content: commContent.trim(),
     });
     setCommContent('');
+  };
+
+  const handleCopySummary = () => {
+    if (!currentIncident || !currentDispatch) return;
+    const summary = generateReviewSummary({
+      plateNumber: currentIncident.plateNumber,
+      routeLabel: currentIncident.routeLabel,
+      faultType: getFaultTypeLabel(currentIncident.faultType),
+      studentCount: currentIncident.studentCount,
+      review,
+      createdAt: currentIncident.createdAt,
+      nodeTimes: currentDispatch.timelineNodes.map((n) => ({ title: n.title, time: n.time })),
+    });
+    navigator.clipboard.writeText(summary).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  };
+
+  const handleRecordFromNotification = (role: string, name: string, phone: string) => {
+    const commRoleValue = ntfRoleToCommRole[role] || 'other';
+    setCommRole(commRoleValue);
+    setCommName(name);
+    setCommPhone(phone);
+    setCommContent('');
+    const el = document.getElementById('comm-input-section');
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
   };
 
   const completedCount = timelineNodes.filter((n) => n.status === 'completed').length;
@@ -360,10 +392,39 @@ export default function Tracking() {
               </div>
 
               <div className="mt-5 pt-4 border-t border-slate-700/50">
-                <p className="text-xs text-slate-400 text-center">
-                  <span className="text-slate-300 font-medium">提示：</span>
-                  可截图或导出此页用于周报/周报汇报
-                </p>
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <FileText className="w-4 h-4 text-slate-400" />
+                    <span className="text-sm font-medium text-white">汇报摘要</span>
+                  </div>
+                  <button
+                    onClick={handleCopySummary}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs rounded-lg font-medium transition-colors"
+                  >
+                    {copied ? (
+                      <>
+                        <Check className="w-3.5 h-3.5" />
+                        已复制
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-3.5 h-3.5" />
+                        复制摘要
+                      </>
+                    )}
+                  </button>
+                </div>
+                <pre className="p-3 bg-slate-900 rounded-xl border border-slate-700/50 text-xs text-slate-300 font-mono leading-relaxed whitespace-pre-wrap overflow-x-auto">
+                  {generateReviewSummary({
+                    plateNumber: currentIncident.plateNumber,
+                    routeLabel: currentIncident.routeLabel,
+                    faultType: getFaultTypeLabel(currentIncident.faultType),
+                    studentCount: currentIncident.studentCount,
+                    review,
+                    createdAt: currentIncident.createdAt,
+                    nodeTimes: currentDispatch.timelineNodes.map((n) => ({ title: n.title, time: n.time })),
+                  })}
+                </pre>
               </div>
             </div>
           )}
@@ -494,12 +555,12 @@ export default function Tracking() {
                 <Bell className="w-5 h-5 text-amber-400" />
                 通知状态
               </h3>
-              <NotificationPanel notifications={currentDispatch.notifications} compact />
+              <NotificationPanel notifications={currentDispatch.notifications} compact onRecordCommunication={handleRecordFromNotification} />
             </div>
           )}
 
           {currentDispatch && (
-            <div className="bg-slate-800/50 backdrop-blur-sm rounded-2xl border border-slate-700/50 p-5">
+            <div id="comm-input-section" className="bg-slate-800/50 backdrop-blur-sm rounded-2xl border border-slate-700/50 p-5">
               <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
                 <MessageSquare className="w-5 h-5 text-purple-400" />
                 值班沟通记录

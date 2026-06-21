@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   ClipboardList,
@@ -60,9 +60,17 @@ const riskOrder: Record<RiskLevel, number> = { red: 0, yellow: 1, green: 2 };
 export default function TaskList() {
   const navigate = useNavigate();
   const { incidents, currentIncident, setCurrentIncident } = useIncidentStore();
-  const { setCurrentDispatch, getDispatchByIncident } = useDispatchStore();
+  const { setCurrentDispatch, getDispatchByIncident, recomputeOverdue } = useDispatchStore();
   const [activeFilter, setActiveFilter] = useState<FilterKey>('all');
   const [activeSort, setActiveSort] = useState<SortKey>('updatedAt');
+
+  useEffect(() => {
+    recomputeOverdue();
+    const timer = setInterval(() => {
+      recomputeOverdue();
+    }, 30000);
+    return () => clearInterval(timer);
+  }, [recomputeOverdue]);
 
   const filteredSorted = useMemo(() => {
     let list = [...incidents];

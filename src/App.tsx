@@ -4,6 +4,7 @@ import IncidentReport from "@/pages/IncidentReport";
 import ResourceMatch from "@/pages/ResourceMatch";
 import Tracking from "@/pages/Tracking";
 import TaskList from "@/pages/TaskList";
+import ShiftHandover from "@/pages/ShiftHandover";
 
 export default function App() {
   return (
@@ -15,6 +16,7 @@ export default function App() {
           <Route path="/resources" element={<ResourceMatch />} />
           <Route path="/tracking" element={<Tracking />} />
           <Route path="/tasks" element={<TaskList />} />
+          <Route path="/handover" element={<ShiftHandover />} />
           <Route path="*" element={<Navigate to="/incident" replace />} />
         </Routes>
       </Layout>

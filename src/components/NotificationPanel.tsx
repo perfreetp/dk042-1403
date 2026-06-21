@@ -7,6 +7,7 @@ import {
   CheckCircle2,
   RefreshCw,
   Bell,
+  MessageSquare,
 } from 'lucide-react';
 import type { NotificationTarget, NotificationStatus } from '@/types';
 import { useCurrentDispatch, useDispatchStore } from '@/store/useDispatchStore';
@@ -48,9 +49,10 @@ const statusStyles: Record<
 interface NotificationPanelProps {
   notifications: NotificationTarget[];
   compact?: boolean;
+  onRecordCommunication?: (role: string, name: string, phone: string) => void;
 }
 
-export default function NotificationPanel({ notifications, compact = false }: NotificationPanelProps) {
+export default function NotificationPanel({ notifications, compact = false, onRecordCommunication }: NotificationPanelProps) {
   const { updateNotificationStatus, renotify } = useDispatchStore();
   const dispatch = useCurrentDispatch();
 
@@ -145,6 +147,16 @@ export default function NotificationPanel({ notifications, compact = false }: No
                       <RefreshCw className="w-3 h-3 inline mr-1" />
                       重发
                     </button>
+                    {onRecordCommunication && (
+                      <button
+                        onClick={() => onRecordCommunication(ntf.role, ntf.name, ntf.phone)}
+                        className="px-2.5 py-1 text-xs rounded-lg font-medium bg-slate-700/60 text-slate-300 hover:bg-purple-500/20 hover:text-purple-300 transition-colors"
+                        title="记录沟通"
+                      >
+                        <MessageSquare className="w-3 h-3 inline mr-1" />
+                        记录沟通
+                      </button>
+                    )}
                   </div>
                 )}
               </div>

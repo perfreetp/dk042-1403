@@ -1,4 +1,4 @@
-import type { RiskAssessment, RiskLevel, TimelineNode } from '@/types';
+import type { RiskAssessment, RiskLevel, TimelineNode, CommunicationRole } from '@/types';
 
 export function calculateRisk(
   studentCount: number,
@@ -239,7 +239,7 @@ export function computeDispatchReview(nodes: TimelineNode[]): DispatchReview {
     });
   }
 
-  const overdueNodes = sorted.filter((n) => n.status === 'overdue').length;
+  const overdueNodes = nodeDurations.filter((d) => d.overdue > 0).length;
 
   return {
     nodeDurations,
@@ -259,3 +259,56 @@ export const communicationRoleColors: Record<string, { bg: string; text: string;
   dispatch: { bg: 'bg-slate-500/15', text: 'text-slate-300', border: 'border-slate-500/30' },
   other: { bg: 'bg-slate-500/15', text: 'text-slate-300', border: 'border-slate-500/30' },
 };
+
+export const ntfRoleToCommRole: Record<string, CommunicationRole> = {
+  driver: 'driver',
+  repair: 'repair',
+  tow: 'tow',
+  supervisor: 'school',
+  school: 'school',
+};
+
+export function generateReviewSummary(params: {
+  plateNumber: string;
+  routeLabel: string;
+  faultType: string;
+  studentCount: number;
+  review: DispatchReview;
+  createdAt: Date;
+  nodeTimes: { title: string; time: Date | null }[];
+}): string {
+  const { plateNumber, routeLabel, faultType, studentCount, review, createdAt, nodeTimes } = params;
+  const lines: string[] = [];
+
+  lines.push('【校车救援复盘摘要】');
+  lines.push(`车牌：${plateNumber} | 线路：${routeLabel || '未指定'}`);
+  lines.push(`故障：${faultType} | 学生：${studentCount}人`);
+  lines.push('---');
+
+  lines.push('时间线：');
+  for (let i = 0; i < review.nodeDurations.length; i++) {
+    const item = review.nodeDurations[i];
+    const nodeTime = nodeTimes[i]?.time;
+    const timeStr = nodeTime ? formatTime(nodeTime) : '--:--';
+    const expectedStr = item.expected > 0 ? `预计${item.expected}分钟` : '';
+    const actualStr = item.completed ? `实际${formatDuration(item.duration)}` : '未完成';
+    const overdueStr = item.overdue > 0 ? ` ⚠超时${formatDuration(item.overdue)}` : '';
+    const mark = item.overdue > 0 ? '⚠' : item.completed ? '✓' : '…';
+    lines.push(`- ${item.title}：${timeStr} → ${actualStr}${expectedStr ? `（${expectedStr}）` : ''}${overdueStr} ${mark}`);
+  }
+
+  lines.push('---');
+  lines.push(`总处置时长：${formatDuration(review.totalMinutes)} | 超时累计：${formatDuration(review.totalOverdueMinutes)} | 超时节点：${review.overdueNodes}个`);
+  lines.push(`接报时间：${formatDateTime(createdAt)}`);
+
+  if (review.overdueNodes > 0) {
+    const overdueNames = review.nodeDurations
+      .filter((d) => d.overdue > 0)
+      .map((d) => `${d.title}超${formatDuration(d.overdue)}`);
+    lines.push(`后续建议：${overdueNames.join('、')}，建议优化该环节资源配置与响应速度`);
+  } else {
+    lines.push('后续建议：本次各节点均在预计时间内完成，流程顺畅');
+  }
+
+  return lines.join('\n');
+}
