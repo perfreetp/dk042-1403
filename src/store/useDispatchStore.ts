@@ -6,6 +6,8 @@ import type {
   NotificationTarget,
   NotificationStatus,
   NodeStatus,
+  CommunicationRecord,
+  CommunicationRole,
 } from '@/types';
 import {
   mockDispatchOrder,
@@ -13,6 +15,7 @@ import {
   buildInitialTimelineNodes,
 } from '@/data/mockData';
 import { generateId, computeNodeOverdue } from '@/utils';
+import { useIncidentStore } from '@/store/useIncidentStore';
 
 interface DispatchState {
   dispatchOrders: DispatchOrder[];
@@ -25,6 +28,13 @@ interface DispatchState {
   confirmNode: (nodeId: string, remark?: string) => void;
   updateNotificationStatus: (notificationId: string, status: NotificationStatus) => void;
   renotify: (notificationId: string) => void;
+  addCommunication: (data: {
+    role: CommunicationRole;
+    roleLabel: string;
+    contactName: string;
+    contactPhone?: string;
+    content: string;
+  }) => void;
   setCurrentDispatch: (dispatchId: string) => void;
   getDispatchByIncident: (incidentId: string) => DispatchOrder | undefined;
   recomputeOverdue: () => void;
@@ -44,6 +54,13 @@ function recomputeNodesStatus(nodes: TimelineNode[]): TimelineNode[] {
   });
 }
 
+function touchIncidentByDispatch(dispatchId: string, orders: DispatchOrder[]) {
+  const order = orders.find((o) => o.id === dispatchId);
+  if (order) {
+    useIncidentStore.getState().touchIncident(order.incidentId);
+  }
+}
+
 export const useDispatchStore = create<DispatchState>((set, get) => ({
   dispatchOrders: [mockDispatchOrder],
   currentDispatchId: mockDispatchOrder.id,
@@ -59,6 +76,7 @@ export const useDispatchStore = create<DispatchState>((set, get) => ({
       selectedResources: resources,
       notifications,
       timelineNodes: initialNodes,
+      communications: [],
       createdAt: now,
       updatedAt: now,
       status: 'dispatched',
@@ -69,6 +87,8 @@ export const useDispatchStore = create<DispatchState>((set, get) => ({
       currentDispatchId: newOrder.id,
     }));
 
+    useIncidentStore.getState().touchIncident(incidentId);
+
     return newOrder;
   },
 
@@ -76,8 +96,8 @@ export const useDispatchStore = create<DispatchState>((set, get) => ({
     const { currentDispatchId } = get();
     if (!currentDispatchId) return;
 
-    set((state) => ({
-      dispatchOrders: state.dispatchOrders.map((order) => {
+    set((state) => {
+      const newOrders = state.dispatchOrders.map((order) => {
         if (order.id !== currentDispatchId) return order;
 
         const confirmedNodes = order.timelineNodes.map((node) => {
@@ -101,16 +121,19 @@ export const useDispatchStore = create<DispatchState>((set, get) => ({
           status: allCompleted ? 'completed' as const : 'in_progress' as const,
           updatedAt: new Date(),
         };
-      }),
-    }));
+      });
+
+      touchIncidentByDispatch(currentDispatchId, newOrders);
+      return { dispatchOrders: newOrders };
+    });
   },
 
   updateNotificationStatus: (notificationId, status) => {
     const { currentDispatchId } = get();
     if (!currentDispatchId) return;
 
-    set((state) => ({
-      dispatchOrders: state.dispatchOrders.map((order) => {
+    set((state) => {
+      const newOrders = state.dispatchOrders.map((order) => {
         if (order.id !== currentDispatchId) return order;
         return {
           ...order,
@@ -121,16 +144,19 @@ export const useDispatchStore = create<DispatchState>((set, get) => ({
           ),
           updatedAt: new Date(),
         };
-      }),
-    }));
+      });
+
+      touchIncidentByDispatch(currentDispatchId, newOrders);
+      return { dispatchOrders: newOrders };
+    });
   },
 
   renotify: (notificationId) => {
     const { currentDispatchId } = get();
     if (!currentDispatchId) return;
 
-    set((state) => ({
-      dispatchOrders: state.dispatchOrders.map((order) => {
+    set((state) => {
+      const newOrders = state.dispatchOrders.map((order) => {
         if (order.id !== currentDispatchId) return order;
         return {
           ...order,
@@ -141,8 +167,36 @@ export const useDispatchStore = create<DispatchState>((set, get) => ({
           ),
           updatedAt: new Date(),
         };
-      }),
-    }));
+      });
+
+      touchIncidentByDispatch(currentDispatchId, newOrders);
+      return { dispatchOrders: newOrders };
+    });
+  },
+
+  addCommunication: (data) => {
+    const { currentDispatchId } = get();
+    if (!currentDispatchId) return;
+
+    const record: CommunicationRecord = {
+      id: generateId('COMM'),
+      ...data,
+      createdAt: new Date(),
+    };
+
+    set((state) => {
+      const newOrders = state.dispatchOrders.map((order) => {
+        if (order.id !== currentDispatchId) return order;
+        return {
+          ...order,
+          communications: [record, ...order.communications],
+          updatedAt: new Date(),
+        };
+      });
+
+      touchIncidentByDispatch(currentDispatchId, newOrders);
+      return { dispatchOrders: newOrders };
+    });
   },
 
   setCurrentDispatch: (dispatchId) => {
@@ -185,4 +239,9 @@ export function useDispatchNotifications(): NotificationTarget[] {
 export function useDispatchTimeline(): TimelineNode[] {
   const current = useCurrentDispatch();
   return current?.timelineNodes || [];
+}
+
+export function useDispatchCommunications(): CommunicationRecord[] {
+  const current = useCurrentDispatch();
+  return current?.communications || [];
 }

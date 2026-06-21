@@ -14,6 +14,18 @@ export type NotificationRole = 'driver' | 'repair' | 'tow' | 'supervisor' | 'sch
 
 export type NotificationStatus = 'notified' | 'unreachable' | 'confirmed';
 
+export type CommunicationRole = 'driver' | 'repair' | 'tow' | 'school' | 'dispatch' | 'other';
+
+export interface CommunicationRecord {
+  id: string;
+  role: CommunicationRole;
+  roleLabel: string;
+  contactName: string;
+  contactPhone?: string;
+  content: string;
+  createdAt: Date;
+}
+
 export interface Incident {
   id: string;
   plateNumber: string;
@@ -69,6 +81,7 @@ export interface DispatchOrder {
   selectedResources: Resource[];
   notifications: NotificationTarget[];
   timelineNodes: TimelineNode[];
+  communications: CommunicationRecord[];
   createdAt: Date;
   updatedAt: Date;
   status: DispatchStatus;

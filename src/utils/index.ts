@@ -188,3 +188,74 @@ export function getOverdueMins(node: TimelineNode, nodes: TimelineNode[]): numbe
   const baseTime = getLastCompletedTime(nodes) || new Date();
   return Math.max(0, getDurationMins(baseTime) - node.expectedMinutes);
 }
+
+export function formatDuration(mins: number): string {
+  if (mins <= 0) return '0分钟';
+  if (mins < 60) return `${mins}分钟`;
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  return m > 0 ? `${h}小时${m}分` : `${h}小时`;
+}
+
+export interface DispatchReview {
+  nodeDurations: { title: string; duration: number; expected: number; overdue: number; completed: boolean }[];
+  totalMinutes: number;
+  totalOverdueMinutes: number;
+  overdueNodes: number;
+  completedNodes: number;
+  totalNodes: number;
+}
+
+export function computeDispatchReview(nodes: TimelineNode[]): DispatchReview {
+  const sorted = [...nodes].sort((a, b) => {
+    const order: Record<string, number> = { accepted: 0, departed: 1, arrived: 2, transferred: 3, towed: 4 };
+    return order[a.type] - order[b.type];
+  });
+
+  const nodeDurations: DispatchReview['nodeDurations'] = [];
+  let totalMinutes = 0;
+  let totalOverdueMinutes = 0;
+  let completedNodes = 0;
+
+  for (let i = 0; i < sorted.length; i++) {
+    const node = sorted[i];
+    const prev = sorted[i - 1];
+    const prevTime = prev?.time || null;
+    const nodeTime = node.time || null;
+    const duration = prevTime && nodeTime ? getDurationMins(prevTime, nodeTime) : 0;
+    const overdue = node.status === 'completed' && prevTime && node.expectedMinutes
+      ? Math.max(0, getDurationMins(prevTime, nodeTime) - node.expectedMinutes)
+      : 0;
+    if (node.status === 'completed') completedNodes++;
+    if (duration > 0) totalMinutes += duration;
+    if (overdue > 0) totalOverdueMinutes += overdue;
+
+    nodeDurations.push({
+      title: node.title,
+      duration,
+      expected: node.expectedMinutes || 0,
+      overdue,
+      completed: node.status === 'completed',
+    });
+  }
+
+  const overdueNodes = sorted.filter((n) => n.status === 'overdue').length;
+
+  return {
+    nodeDurations,
+    totalMinutes,
+    totalOverdueMinutes,
+    overdueNodes,
+    completedNodes,
+    totalNodes: sorted.length,
+  };
+}
+
+export const communicationRoleColors: Record<string, { bg: string; text: string; border: string }> = {
+  driver: { bg: 'bg-blue-500/15', text: 'text-blue-300', border: 'border-blue-500/30' },
+  repair: { bg: 'bg-amber-500/15', text: 'text-amber-300', border: 'border-amber-500/30' },
+  tow: { bg: 'bg-emerald-500/15', text: 'text-emerald-300', border: 'border-emerald-500/30' },
+  school: { bg: 'bg-purple-500/15', text: 'text-purple-300', border: 'border-purple-500/30' },
+  dispatch: { bg: 'bg-slate-500/15', text: 'text-slate-300', border: 'border-slate-500/30' },
+  other: { bg: 'bg-slate-500/15', text: 'text-slate-300', border: 'border-slate-500/30' },
+};

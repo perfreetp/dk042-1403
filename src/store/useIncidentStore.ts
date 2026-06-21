@@ -20,6 +20,7 @@ interface IncidentState {
   submitIncident: () => Incident | null;
   resetForm: () => void;
   setCurrentIncident: (incidentId: string) => void;
+  touchIncident: (incidentId: string) => void;
 }
 
 const initialFormData = {
@@ -103,5 +104,19 @@ export const useIncidentStore = create<IncidentState>((set, get) => ({
     if (incident) {
       set({ currentIncident: incident });
     }
+  },
+
+  touchIncident: (incidentId) => {
+    const now = new Date();
+    set((state) => {
+      const incidents = state.incidents.map((i) =>
+        i.id === incidentId ? { ...i, updatedAt: now } : i
+      );
+      const currentIncident =
+        state.currentIncident?.id === incidentId
+          ? { ...state.currentIncident, updatedAt: now }
+          : state.currentIncident;
+      return { incidents, currentIncident };
+    });
   },
 }));

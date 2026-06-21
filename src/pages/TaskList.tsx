@@ -1,3 +1,4 @@
+import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   ClipboardList,
@@ -10,13 +11,19 @@ import {
   CheckCircle2,
   Circle,
   Loader2,
+  SlidersHorizontal,
+  ArrowUpDown,
+  X,
+  Bell,
+  FileText,
+  Calendar,
 } from 'lucide-react';
 import { useIncidentStore } from '@/store/useIncidentStore';
 import { useDispatchStore } from '@/store/useDispatchStore';
 import RiskBadge from '@/components/RiskBadge';
 import { getRelativeTime } from '@/utils';
 import { getDispatchStatusLabel } from '@/data/mockData';
-import type { IncidentStatus, DispatchStatus } from '@/types';
+import type { IncidentStatus, DispatchStatus, RiskLevel } from '@/types';
 
 const statusConfig: Record<IncidentStatus, { label: string; color: string; icon: typeof Circle }> = {
   pending: { label: '待处理', color: 'text-amber-400', icon: Circle },
@@ -31,17 +38,91 @@ const dispatchStatusColors: Record<DispatchStatus, string> = {
   completed: 'bg-emerald-500/20 text-emerald-400',
 };
 
+type FilterKey = 'all' | 'highRisk' | 'overdue' | 'unconfirmed' | 'noDispatch';
+type SortKey = 'updatedAt' | 'createdAt' | 'risk';
+
+const filters: { key: FilterKey; label: string; icon: typeof Bell }[] = [
+  { key: 'all', label: '全部', icon: ClipboardList },
+  { key: 'highRisk', label: '高风险', icon: AlertTriangle },
+  { key: 'overdue', label: '超时', icon: Clock },
+  { key: 'unconfirmed', label: '未确认通知', icon: Bell },
+  { key: 'noDispatch', label: '未派单', icon: FileText },
+];
+
+const sorts: { key: SortKey; label: string; icon: typeof Calendar }[] = [
+  { key: 'updatedAt', label: '最近更新', icon: Calendar },
+  { key: 'createdAt', label: '接报时间', icon: Clock },
+  { key: 'risk', label: '风险等级', icon: AlertTriangle },
+];
+
+const riskOrder: Record<RiskLevel, number> = { red: 0, yellow: 1, green: 2 };
+
 export default function TaskList() {
   const navigate = useNavigate();
   const { incidents, currentIncident, setCurrentIncident } = useIncidentStore();
   const { setCurrentDispatch, getDispatchByIncident } = useDispatchStore();
+  const [activeFilter, setActiveFilter] = useState<FilterKey>('all');
+  const [activeSort, setActiveSort] = useState<SortKey>('updatedAt');
+
+  const filteredSorted = useMemo(() => {
+    let list = [...incidents];
+
+    if (activeFilter === 'highRisk') {
+      list = list.filter((i) => i.riskLevel === 'red');
+    } else if (activeFilter === 'overdue') {
+      list = list.filter((i) => {
+        const d = getDispatchByIncident(i.id);
+        return d && d.timelineNodes.some((n) => n.status === 'overdue');
+      });
+    } else if (activeFilter === 'unconfirmed') {
+      list = list.filter((i) => {
+        const d = getDispatchByIncident(i.id);
+        if (!d) return false;
+        return d.notifications.some((n) => n.status !== 'confirmed');
+      });
+    } else if (activeFilter === 'noDispatch') {
+      list = list.filter((i) => !getDispatchByIncident(i.id));
+    }
+
+    list.sort((a, b) => {
+      if (activeSort === 'risk') {
+        return riskOrder[a.riskLevel] - riskOrder[b.riskLevel];
+      }
+      if (activeSort === 'createdAt') {
+        return b.createdAt.getTime() - a.createdAt.getTime();
+      }
+      return b.updatedAt.getTime() - a.updatedAt.getTime();
+    });
+
+    return list;
+  }, [incidents, activeFilter, activeSort, getDispatchByIncident]);
+
+  const activeIncidents = filteredSorted.filter((i) => i.status !== 'completed');
+  const completedIncidents = filteredSorted.filter((i) => i.status === 'completed');
+
+  const stats = useMemo(() => {
+    const hasDispatch = (id: string) => !!getDispatchByIncident(id);
+    const active = incidents.filter((i) => i.status !== 'completed');
+    return {
+      red: active.filter((i) => i.riskLevel === 'red').length,
+      active: active.length,
+      completed: incidents.filter((i) => i.status === 'completed').length,
+      overdue: active.filter((i) => {
+        const d = getDispatchByIncident(i.id);
+        return d && d.timelineNodes.some((n) => n.status === 'overdue');
+      }).length,
+      noDispatch: active.filter((i) => !hasDispatch(i.id)).length,
+      unconfirmed: active.filter((i) => {
+        const d = getDispatchByIncident(i.id);
+        return d && d.notifications.some((n) => n.status !== 'confirmed');
+      }).length,
+    };
+  }, [incidents, getDispatchByIncident]);
 
   const handleSelectTask = (incidentId: string) => {
     setCurrentIncident(incidentId);
     const dispatch = getDispatchByIncident(incidentId);
-    if (dispatch) {
-      setCurrentDispatch(dispatch.id);
-    }
+    if (dispatch) setCurrentDispatch(dispatch.id);
   };
 
   const handleGoTracking = (incidentId: string) => {
@@ -54,9 +135,6 @@ export default function TaskList() {
     navigate('/resources');
   };
 
-  const activeIncidents = incidents.filter((i) => i.status !== 'completed');
-  const completedIncidents = incidents.filter((i) => i.status === 'completed');
-
   const renderTaskCard = (incident: typeof incidents[0]) => {
     const dispatch = getDispatchByIncident(incident.id);
     const isCurrent = currentIncident?.id === incident.id;
@@ -67,6 +145,7 @@ export default function TaskList() {
     const completedNodes = dispatch?.timelineNodes.filter((n) => n.status === 'completed').length || 0;
     const totalNodes = dispatch?.timelineNodes.length || 0;
     const overdueNodes = dispatch?.timelineNodes.filter((n) => n.status === 'overdue').length || 0;
+    const hasUnconfirmed = totalNtf > 0 && confirmedNtf < totalNtf;
 
     return (
       <div
@@ -102,6 +181,22 @@ export default function TaskList() {
               <div className="flex items-center gap-2 mb-0.5">
                 <h4 className="font-semibold text-white truncate">{incident.plateNumber}</h4>
                 <RiskBadge level={incident.riskLevel} size="sm" />
+                {overdueNodes > 0 && (
+                  <span className="text-xs px-1.5 py-0.5 bg-red-500/20 text-red-400 rounded-full font-medium">
+                    {overdueNodes}超时
+                  </span>
+                )}
+                {!dispatch && incident.status !== 'completed' && (
+                  <span className="text-xs px-1.5 py-0.5 bg-amber-500/20 text-amber-400 rounded-full font-medium">
+                    未派单
+                  </span>
+                )}
+                {hasUnconfirmed && (
+                  <span className="text-xs px-1.5 py-0.5 bg-blue-500/20 text-blue-400 rounded-full font-medium flex items-center gap-1">
+                    <Bell className="w-3 h-3" />
+                    {totalNtf - confirmedNtf}未确认
+                  </span>
+                )}
               </div>
               <p className="text-xs text-slate-500 font-mono">{incident.id}</p>
             </div>
@@ -145,21 +240,12 @@ export default function TaskList() {
             </div>
             <div className="flex items-center justify-between text-sm">
               <span className="text-slate-400">通知确认</span>
-              <span className="text-white font-mono text-xs">
-                {confirmedNtf}/{totalNtf}
-              </span>
+              <span className="text-white font-mono text-xs">{confirmedNtf}/{totalNtf}</span>
             </div>
             <div className="flex items-center justify-between text-sm">
               <span className="text-slate-400">处置进度</span>
               <div className="flex items-center gap-2">
-                <span className="text-white font-mono text-xs">
-                  {completedNodes}/{totalNodes}
-                </span>
-                {overdueNodes > 0 && (
-                  <span className="text-xs px-1.5 py-0.5 bg-red-500/20 text-red-400 rounded-full font-medium">
-                    {overdueNodes}超时
-                  </span>
-                )}
+                <span className="text-white font-mono text-xs">{completedNodes}/{totalNodes}</span>
               </div>
             </div>
             <div className="h-1.5 bg-slate-700 rounded-full overflow-hidden mt-1">
@@ -176,9 +262,10 @@ export default function TaskList() {
         )}
 
         <div className="flex items-center justify-between">
-          <p className="text-xs text-slate-500">
+          <div className="text-xs text-slate-500 flex items-center gap-1.5">
+            <Calendar className="w-3.5 h-3.5" />
             更新于 {getRelativeTime(incident.updatedAt)}
-          </p>
+          </div>
           <div className="flex gap-2">
             {dispatch ? (
               <button
@@ -204,7 +291,7 @@ export default function TaskList() {
   };
 
   return (
-    <div className="max-w-5xl mx-auto">
+    <div className="max-w-6xl mx-auto">
       <div className="mb-6">
         <h2 className="text-2xl font-bold text-white mb-2 flex items-center gap-3">
           <div className="w-10 h-10 bg-purple-500/20 rounded-xl flex items-center justify-center">
@@ -215,16 +302,14 @@ export default function TaskList() {
         <p className="text-slate-400">查看所有故障任务，快速切换和处置</p>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-6">
         <div className="bg-slate-800/50 backdrop-blur-sm rounded-xl border border-slate-700/50 p-4">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-red-500/20 rounded-lg flex items-center justify-center">
               <AlertTriangle className="w-5 h-5 text-red-400" />
             </div>
             <div>
-              <p className="text-2xl font-bold text-white">
-                {incidents.filter((i) => i.riskLevel === 'red' && i.status !== 'completed').length}
-              </p>
+              <p className="text-2xl font-bold text-white">{stats.red}</p>
               <p className="text-xs text-slate-400">高风险任务</p>
             </div>
           </div>
@@ -235,7 +320,7 @@ export default function TaskList() {
               <Clock className="w-5 h-5 text-blue-400" />
             </div>
             <div>
-              <p className="text-2xl font-bold text-white">{activeIncidents.length}</p>
+              <p className="text-2xl font-bold text-white">{stats.active}</p>
               <p className="text-xs text-slate-400">进行中任务</p>
             </div>
           </div>
@@ -246,10 +331,82 @@ export default function TaskList() {
               <CheckCircle2 className="w-5 h-5 text-emerald-400" />
             </div>
             <div>
-              <p className="text-2xl font-bold text-white">{completedIncidents.length}</p>
+              <p className="text-2xl font-bold text-white">{stats.completed}</p>
               <p className="text-xs text-slate-400">已完成任务</p>
             </div>
           </div>
+        </div>
+        <div className="bg-slate-800/50 backdrop-blur-sm rounded-xl border border-slate-700/50 p-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-red-500/20 rounded-lg flex items-center justify-center">
+              <Clock className="w-5 h-5 text-red-400" />
+            </div>
+            <div>
+              <p className="text-2xl font-bold text-white">{stats.overdue}</p>
+              <p className="text-xs text-slate-400">超时任务</p>
+            </div>
+          </div>
+        </div>
+        <div className="bg-slate-800/50 backdrop-blur-sm rounded-xl border border-slate-700/50 p-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-amber-500/20 rounded-lg flex items-center justify-center">
+              <Bell className="w-5 h-5 text-amber-400" />
+            </div>
+            <div>
+              <p className="text-2xl font-bold text-white">{stats.noDispatch + stats.unconfirmed}</p>
+              <p className="text-xs text-slate-400">待确认/未派</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-3 mb-5">
+        <div className="flex items-center gap-2 bg-slate-800/50 backdrop-blur-sm rounded-xl border border-slate-700/50 p-1.5">
+          <SlidersHorizontal className="w-4 h-4 text-slate-400 ml-2 mr-1" />
+          {filters.map((f) => (
+            <button
+              key={f.key}
+              onClick={() => setActiveFilter(f.key)}
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg font-medium transition-colors ${
+                activeFilter === f.key
+                  ? 'bg-purple-500/25 text-purple-200 border border-purple-500/40'
+                  : 'text-slate-300 hover:bg-slate-700/50 border border-transparent'
+              }`}
+            >
+              <f.icon className="w-3.5 h-3.5" />
+              {f.label}
+              {f.key === 'all' && (
+                <span className="ml-0.5 text-slate-400">({incidents.length})</span>
+              )}
+            </button>
+          ))}
+          {activeFilter !== 'all' && (
+            <button
+              onClick={() => setActiveFilter('all')}
+              className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-700 rounded-lg transition-colors"
+              title="清除筛选"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
+        </div>
+
+        <div className="flex items-center gap-2 bg-slate-800/50 backdrop-blur-sm rounded-xl border border-slate-700/50 p-1.5">
+          <ArrowUpDown className="w-4 h-4 text-slate-400 ml-2 mr-1" />
+          {sorts.map((s) => (
+            <button
+              key={s.key}
+              onClick={() => setActiveSort(s.key)}
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg font-medium transition-colors ${
+                activeSort === s.key
+                  ? 'bg-blue-500/25 text-blue-200 border border-blue-500/40'
+                  : 'text-slate-300 hover:bg-slate-700/50 border border-transparent'
+              }`}
+            >
+              <s.icon className="w-3.5 h-3.5" />
+              {s.label}
+            </button>
+          ))}
         </div>
       </div>
 
@@ -261,12 +418,7 @@ export default function TaskList() {
             <span className="text-sm font-normal text-slate-400 ml-1">({activeIncidents.length})</span>
           </h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {activeIncidents
-              .sort((a, b) => {
-                const riskOrder = { red: 0, yellow: 1, green: 2 };
-                return riskOrder[a.riskLevel] - riskOrder[b.riskLevel];
-              })
-              .map(renderTaskCard)}
+            {activeIncidents.map(renderTaskCard)}
           </div>
         </div>
       )}
@@ -284,13 +436,19 @@ export default function TaskList() {
         </div>
       )}
 
-      {incidents.length === 0 && (
+      {filteredSorted.length === 0 && (
         <div className="text-center py-20">
           <div className="w-20 h-20 bg-slate-800 rounded-2xl flex items-center justify-center mx-auto mb-4">
             <ClipboardList className="w-10 h-10 text-slate-600" />
           </div>
-          <h3 className="text-xl font-semibold text-white mb-2">暂无救援任务</h3>
-          <p className="text-slate-400 mb-6">从故障接报页面提交新故障后，任务将显示在这里</p>
+          <h3 className="text-xl font-semibold text-white mb-2">没有匹配的任务</h3>
+          <p className="text-slate-400 mb-2">试试切换筛选条件</p>
+          <button
+            onClick={() => setActiveFilter('all')}
+            className="text-blue-400 text-sm hover:text-blue-300"
+          >
+            查看全部任务
+          </button>
         </div>
       )}
     </div>

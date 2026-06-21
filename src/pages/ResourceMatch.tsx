@@ -71,8 +71,15 @@ export default function ResourceMatch() {
 
   const hasBus = selectedResources.some((r) => r.type === 'bus');
   const hasRepair = selectedResources.some((r) => r.type === 'repair');
+  const hasTow = selectedResources.some((r) => r.type === 'tow');
 
-  const canCreateOrder = selectedResources.length > 0 && currentIncident;
+  const missingRoles: { key: ResourceType; label: string; icon: typeof Bus }[] = [];
+  if (!hasBus) missingRoles.push({ key: 'bus', label: '接驳校车', icon: Bus });
+  if (!hasRepair) missingRoles.push({ key: 'repair', label: '维修人员', icon: Wrench });
+  if (!hasTow) missingRoles.push({ key: 'tow', label: '拖车', icon: Truck });
+
+  const allRolesReady = missingRoles.length === 0;
+  const canCreateOrder = selectedResources.length > 0 && currentIncident && allRolesReady;
 
   const handleCreateDispatch = () => {
     if (!currentIncident || !canCreateOrder) return;
@@ -312,13 +319,37 @@ export default function ResourceMatch() {
                   );
                 })}
 
-                {(!hasBus || !hasRepair) && (
-                  <div className="flex items-start gap-2 p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl">
-                    <AlertCircle className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" />
-                    <p className="text-xs text-amber-300">
-                      {!hasBus && '建议选择一辆接驳校车'}
-                      {!hasBus && !hasRepair && '，'}
-                      {!hasRepair && '建议选择一个维修点'}
+                {missingRoles.length > 0 && (
+                  <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl space-y-2.5">
+                    <div className="flex items-start gap-2">
+                      <AlertCircle className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" />
+                      <div>
+                        <p className="text-xs text-amber-300 font-medium">
+                          还需补齐以下角色，学校值班老师将自动匹配线路：
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {missingRoles.map((role) => (
+                        <button
+                          key={role.key}
+                          onClick={() => setActiveTab(role.key)}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-200 text-xs rounded-lg font-medium transition-colors"
+                        >
+                          <role.icon className="w-3.5 h-3.5" />
+                          补{role.label}
+                          <Plus className="w-3.5 h-3.5" />
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {allRolesReady && (
+                  <div className="flex items-center gap-2 p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-xl">
+                    <CheckCircle2 className="w-5 h-5 text-emerald-400 flex-shrink-0" />
+                    <p className="text-xs text-emerald-300">
+                      接驳校车、维修人员、拖车、学校值班老师已全部配齐
                     </p>
                   </div>
                 )}
