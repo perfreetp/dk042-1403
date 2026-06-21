@@ -96,3 +96,13 @@ export interface RiskAssessment {
   roadDesc: string;
   resourceDesc: string;
 }
+
+export interface HandoverRecord {
+  id: string;
+  incidentId: string;
+  acknowledged: boolean;
+  acknowledgedAt: Date | null;
+  handoverNote: string;
+  createdAt: Date;
+  updatedAt: Date;
+}

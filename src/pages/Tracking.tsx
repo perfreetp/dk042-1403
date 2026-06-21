@@ -25,6 +25,7 @@ import {
   CheckCircle2,
   Copy,
   Check,
+  PhoneOff,
 } from 'lucide-react';
 import { useIncidentStore } from '@/store/useIncidentStore';
 import {
@@ -49,8 +50,9 @@ import {
   communicationRoleColors,
   generateReviewSummary,
   ntfRoleToCommRole,
+  ntfStatusStyles,
 } from '@/utils';
-import { getResourceLabel, getDispatchStatusLabel, getFaultTypeLabel } from '@/data/mockData';
+import { getResourceLabel, getDispatchStatusLabel, getFaultTypeLabel, getNotificationStatusLabel } from '@/data/mockData';
 import type { CommunicationRole } from '@/types';
 
 const roleOptions: { value: CommunicationRole; label: string; icon: typeof Bus }[] = [
@@ -64,7 +66,7 @@ const roleOptions: { value: CommunicationRole; label: string; icon: typeof Bus }
 
 export default function Tracking() {
   const { currentIncident } = useIncidentStore();
-  const { confirmNode, recomputeOverdue, addCommunication } = useDispatchStore();
+  const { confirmNode, recomputeOverdue, addCommunication, updateNotificationStatus, renotify } = useDispatchStore();
   const currentDispatch = useCurrentDispatch();
   const timelineNodes = useDispatchTimeline();
   const communications = useDispatchCommunications();
@@ -144,7 +146,7 @@ export default function Tracking() {
       studentCount: currentIncident.studentCount,
       review,
       createdAt: currentIncident.createdAt,
-      nodeTimes: currentDispatch.timelineNodes.map((n) => ({ title: n.title, time: n.time })),
+      nodeTimes: currentDispatch.timelineNodes.map((n) => ({ title: n.title, time: n.time, remark: n.remark })),
     });
     navigator.clipboard.writeText(summary).then(() => {
       setCopied(true);
@@ -391,6 +393,97 @@ export default function Tracking() {
                 ))}
               </div>
 
+              <div className="mt-5 p-5 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 rounded-2xl border border-cyan-500/20">
+                <div className="text-center mb-4">
+                  <p className="text-xs text-cyan-400 tracking-widest uppercase mb-1">校车救援复盘报告</p>
+                  <p className="text-xs text-slate-500">School Bus Rescue Review</p>
+                </div>
+
+                <div className="bg-slate-800/80 backdrop-blur-sm rounded-xl p-4 mb-4 border border-slate-700/50">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <p className="text-xs text-slate-500 mb-0.5">车牌</p>
+                      <p className="text-lg font-bold text-white font-mono">{currentIncident.plateNumber}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-slate-500 mb-0.5">线路</p>
+                      <p className="text-lg font-bold text-white truncate">{currentIncident.routeLabel || '未指定'}</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-3 gap-2 mb-4">
+                  <div className="bg-slate-800/60 rounded-xl p-3 text-center">
+                    <p className="text-xs text-slate-500 mb-1">总时长</p>
+                    <p className="text-lg font-bold text-emerald-400 font-mono">{formatDuration(review.totalMinutes)}</p>
+                  </div>
+                  <div className="bg-slate-800/60 rounded-xl p-3 text-center">
+                    <p className="text-xs text-slate-500 mb-1">超时节点</p>
+                    <p className={`text-lg font-bold font-mono ${review.overdueNodes > 0 ? 'text-red-400' : 'text-emerald-400'}`}>{review.overdueNodes}</p>
+                  </div>
+                  <div className="bg-slate-800/60 rounded-xl p-3 text-center">
+                    <p className="text-xs text-slate-500 mb-1">超时累计</p>
+                    <p className={`text-lg font-bold font-mono ${review.totalOverdueMinutes > 0 ? 'text-red-400' : 'text-emerald-400'}`}>{formatDuration(review.totalOverdueMinutes)}</p>
+                  </div>
+                </div>
+
+                <div className="space-y-2 mb-4">
+                  <p className="text-xs text-slate-400 font-medium mb-2">超时环节</p>
+                  {review.nodeDurations.filter((d) => d.overdue > 0).length > 0 ? (
+                    review.nodeDurations.filter((d) => d.overdue > 0).map((item, idx) => {
+                      const node = currentDispatch.timelineNodes.find((n) => n.title === item.title);
+                      return (
+                        <div key={idx} className="flex items-center justify-between bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2">
+                          <span className="text-sm text-white">{item.title}</span>
+                          <span className="text-sm font-mono text-red-400 font-bold">+{formatDuration(item.overdue)}</span>
+                        </div>
+                      );
+                    })
+                  ) : (
+                    <div className="flex items-center justify-center bg-emerald-500/10 border border-emerald-500/30 rounded-lg px-3 py-3">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-400 mr-2" />
+                      <span className="text-sm text-emerald-400 font-medium">所有节点均按时完成</span>
+                    </div>
+                  )}
+                </div>
+
+                <div className="space-y-2 mb-4">
+                  <p className="text-xs text-slate-400 font-medium mb-2">联系人确认</p>
+                  <div className="flex flex-wrap gap-2">
+                    {currentDispatch.notifications.map((ntf) => {
+                      const colors = ntfStatusStyles[ntf.status] || ntfStatusStyles.notified;
+                      return (
+                        <span
+                          key={ntf.id}
+                          className={`text-xs px-2.5 py-1.5 rounded-lg font-medium ${colors.bg} ${colors.text} border border-current/20`}
+                        >
+                          {ntf.name} · {getNotificationStatusLabel(ntf.status)}
+                        </span>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="bg-slate-800/60 rounded-xl p-3 border border-slate-700/50">
+                  <p className="text-xs text-slate-400 font-medium mb-1.5">后续建议</p>
+                  <p className="text-sm text-slate-200 leading-relaxed">
+                    {review.overdueNodes > 0
+                      ? review.nodeDurations
+                          .filter((d) => d.overdue > 0)
+                          .map((d) => `${d.title}超${formatDuration(d.overdue)}，建议优化响应速度`)
+                          .join('；')
+                      : '本次各节点均在预计时间内完成，流程顺畅，继续保持'}
+                  </p>
+                </div>
+
+                <div className="mt-4 pt-3 border-t border-slate-700/50 flex items-center justify-between">
+                  <p className="text-xs text-slate-500 font-mono">{formatDateTime(currentIncident.createdAt)}</p>
+                  <p className="text-xs text-cyan-400 font-medium">
+                    学生 {currentIncident.studentCount} 人 · {getFaultTypeLabel(currentIncident.faultType)}
+                  </p>
+                </div>
+              </div>
+
               <div className="mt-5 pt-4 border-t border-slate-700/50">
                 <div className="flex items-center justify-between mb-3">
                   <div className="flex items-center gap-2">
@@ -422,7 +515,7 @@ export default function Tracking() {
                     studentCount: currentIncident.studentCount,
                     review,
                     createdAt: currentIncident.createdAt,
-                    nodeTimes: currentDispatch.timelineNodes.map((n) => ({ title: n.title, time: n.time })),
+                    nodeTimes: currentDispatch.timelineNodes.map((n) => ({ title: n.title, time: n.time, remark: n.remark })),
                   })}
                 </pre>
               </div>
@@ -633,6 +726,14 @@ export default function Tracking() {
                   communications.map((comm) => {
                     const colors =
                       communicationRoleColors[comm.role] || communicationRoleColors.other;
+
+                    const matchingNtf = currentDispatch?.notifications.find(
+                      (n) =>
+                        n.name === comm.contactName ||
+                        (n.phone && comm.contactPhone && n.phone === comm.contactPhone) ||
+                        ntfRoleToCommRole[n.role] === comm.role
+                    );
+
                     return (
                       <div
                         key={comm.id}
@@ -658,12 +759,56 @@ export default function Tracking() {
                                 )}
                               </div>
                             </div>
-                            <p className="text-xs text-slate-500 font-mono">
-                              {formatDateTimeWithSeconds(comm.createdAt)}
-                            </p>
+                            <div className="flex items-center gap-2 flex-wrap mb-1.5">
+                              <p className="text-xs text-slate-500 font-mono">
+                                {formatDateTimeWithSeconds(comm.createdAt)}
+                              </p>
+                              {matchingNtf && (
+                                <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${ntfStatusStyles[matchingNtf.status].bg} ${ntfStatusStyles[matchingNtf.status].text} flex items-center gap-1`}>
+                                  {matchingNtf.status === 'unreachable' ? (
+                                    <PhoneOff className="w-3 h-3" />
+                                  ) : matchingNtf.status === 'confirmed' ? (
+                                    <CheckCircle2 className="w-3 h-3" />
+                                  ) : (
+                                    <Bell className="w-3 h-3" />
+                                  )}
+                                  {getNotificationStatusLabel(matchingNtf.status)}
+                                </span>
+                              )}
+                            </div>
                             <p className="text-sm text-slate-200 mt-1 leading-relaxed">
                               {comm.content}
                             </p>
+                            {matchingNtf && matchingNtf.status !== 'confirmed' && (
+                              <div className="mt-2 pt-2 border-t border-slate-700/50 flex items-center gap-2">
+                                <p className="text-xs text-slate-500">通知状态快捷操作：</p>
+                                <button
+                                  onClick={() => updateNotificationStatus(matchingNtf.id, 'confirmed')}
+                                  className="px-2 py-1 text-xs bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 rounded-lg font-medium transition-colors flex items-center gap-1"
+                                >
+                                  <CheckCircle2 className="w-3 h-3" />
+                                  标记已确认
+                                </button>
+                                <button
+                                  onClick={() => renotify(matchingNtf.id)}
+                                  className="px-2 py-1 text-xs bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 rounded-lg font-medium transition-colors flex items-center gap-1"
+                                >
+                                  <RefreshCw className="w-3 h-3" />
+                                  重发通知
+                                </button>
+                                <button
+                                  onClick={() => updateNotificationStatus(matchingNtf.id, 'unreachable')}
+                                  className={`px-2 py-1 text-xs rounded-lg font-medium transition-colors flex items-center gap-1 ${
+                                    matchingNtf.status === 'unreachable'
+                                      ? 'bg-red-500/30 text-red-400'
+                                      : 'bg-slate-700 text-slate-400 hover:bg-red-500/20 hover:text-red-400'
+                                  }`}
+                                >
+                                  <PhoneOff className="w-3 h-3" />
+                                  未接通
+                                </button>
+                              </div>
+                            )}
                           </div>
                         </div>
                       </div>

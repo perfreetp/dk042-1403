@@ -8,6 +8,7 @@ import type {
   NodeStatus,
   CommunicationRecord,
   CommunicationRole,
+  HandoverRecord,
 } from '@/types';
 import {
   mockDispatchOrder,
@@ -20,6 +21,7 @@ import { useIncidentStore } from '@/store/useIncidentStore';
 interface DispatchState {
   dispatchOrders: DispatchOrder[];
   currentDispatchId: string | null;
+  handoverRecords: HandoverRecord[];
   createDispatchOrder: (
     incidentId: string,
     resources: Resource[],
@@ -39,6 +41,10 @@ interface DispatchState {
   getDispatchByIncident: (incidentId: string) => DispatchOrder | undefined;
   recomputeOverdue: () => void;
   resetDispatch: () => void;
+  getOrCreateHandover: (incidentId: string) => HandoverRecord;
+  acknowledgeHandover: (incidentId: string) => void;
+  updateHandoverNote: (incidentId: string, note: string) => void;
+  resetHandoverAcknowledged: () => void;
 }
 
 function recomputeNodesStatus(nodes: TimelineNode[]): TimelineNode[] {
@@ -64,6 +70,7 @@ function touchIncidentByDispatch(dispatchId: string, orders: DispatchOrder[]) {
 export const useDispatchStore = create<DispatchState>((set, get) => ({
   dispatchOrders: [mockDispatchOrder],
   currentDispatchId: mockDispatchOrder.id,
+  handoverRecords: [],
 
   createDispatchOrder: (incidentId, resources, routeValue) => {
     const notifications = buildNotifications(resources, routeValue);
@@ -223,6 +230,71 @@ export const useDispatchStore = create<DispatchState>((set, get) => ({
 
   resetDispatch: () => {
     set({ currentDispatchId: null });
+  },
+
+  getOrCreateHandover: (incidentId) => {
+    const { handoverRecords } = get();
+    let record = handoverRecords.find((h) => h.incidentId === incidentId);
+    if (!record) {
+      const now = new Date();
+      record = {
+        id: generateId('HOVER'),
+        incidentId,
+        acknowledged: false,
+        acknowledgedAt: null,
+        handoverNote: '',
+        createdAt: now,
+        updatedAt: now,
+      };
+      set((state) => ({
+        handoverRecords: [...state.handoverRecords, record!],
+      }));
+    }
+    return record!;
+  },
+
+  acknowledgeHandover: (incidentId) => {
+    const now = new Date();
+    set((state) => {
+      const record = state.handoverRecords.find((h) => h.incidentId === incidentId);
+      if (!record) {
+        const newRecord: HandoverRecord = {
+          id: generateId('HOVER'),
+          incidentId,
+          acknowledged: true,
+          acknowledgedAt: now,
+          handoverNote: '',
+          createdAt: now,
+          updatedAt: now,
+        };
+        return { handoverRecords: [...state.handoverRecords, newRecord] };
+      }
+      return {
+        handoverRecords: state.handoverRecords.map((h) =>
+          h.incidentId === incidentId
+            ? { ...h, acknowledged: !h.acknowledged, acknowledgedAt: !h.acknowledged ? now : null, updatedAt: now }
+            : h
+        ),
+      };
+    });
+  },
+
+  updateHandoverNote: (incidentId, note) => {
+    const now = new Date();
+    set((state) => ({
+      handoverRecords: state.handoverRecords.map((h) =>
+        h.incidentId === incidentId ? { ...h, handoverNote: note, updatedAt: now } : h
+      ),
+    }));
+  },
+
+  resetHandoverAcknowledged: () => {
+    const now = new Date();
+    set((state) => ({
+      handoverRecords: state.handoverRecords.map((h) =>
+        h.acknowledged ? { ...h, acknowledged: false, acknowledgedAt: null, updatedAt: now } : h
+      ),
+    }));
   },
 }));
 

@@ -260,6 +260,12 @@ export const communicationRoleColors: Record<string, { bg: string; text: string;
   other: { bg: 'bg-slate-500/15', text: 'text-slate-300', border: 'border-slate-500/30' },
 };
 
+export const ntfStatusStyles: Record<string, { bg: string; text: string }> = {
+  notified: { bg: 'bg-blue-500/15', text: 'text-blue-300' },
+  unreachable: { bg: 'bg-red-500/15', text: 'text-red-300' },
+  confirmed: { bg: 'bg-emerald-500/15', text: 'text-emerald-300' },
+};
+
 export const ntfRoleToCommRole: Record<string, CommunicationRole> = {
   driver: 'driver',
   repair: 'repair',
@@ -275,7 +281,7 @@ export function generateReviewSummary(params: {
   studentCount: number;
   review: DispatchReview;
   createdAt: Date;
-  nodeTimes: { title: string; time: Date | null }[];
+  nodeTimes: { title: string; time: Date | null; remark?: string }[];
 }): string {
   const { plateNumber, routeLabel, faultType, studentCount, review, createdAt, nodeTimes } = params;
   const lines: string[] = [];
@@ -295,6 +301,14 @@ export function generateReviewSummary(params: {
     const overdueStr = item.overdue > 0 ? ` ⚠超时${formatDuration(item.overdue)}` : '';
     const mark = item.overdue > 0 ? '⚠' : item.completed ? '✓' : '…';
     lines.push(`- ${item.title}：${timeStr} → ${actualStr}${expectedStr ? `（${expectedStr}）` : ''}${overdueStr} ${mark}`);
+    if (item.overdue > 0 || item.completed) {
+      const remark = nodeTimes[i]?.remark;
+      if (remark && remark.trim()) {
+        lines.push(`  • 原因：${remark.trim()}`);
+      } else if (item.overdue > 0) {
+        lines.push(`  • 原因：【待补充】`);
+      }
+    }
   }
 
   lines.push('---');
@@ -304,7 +318,10 @@ export function generateReviewSummary(params: {
   if (review.overdueNodes > 0) {
     const overdueNames = review.nodeDurations
       .filter((d) => d.overdue > 0)
-      .map((d) => `${d.title}超${formatDuration(d.overdue)}`);
+      .map((d, idx) => {
+        const remark = nodeTimes[review.nodeDurations.indexOf(d)]?.remark;
+        return `${d.title}超${formatDuration(d.overdue)}${remark ? `（${remark}）` : ''}`;
+      });
     lines.push(`后续建议：${overdueNames.join('、')}，建议优化该环节资源配置与响应速度`);
   } else {
     lines.push('后续建议：本次各节点均在预计时间内完成，流程顺畅');
