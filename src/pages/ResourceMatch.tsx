@@ -14,11 +14,15 @@ import {
   Send,
   ChevronRight,
   AlertCircle,
+  Route,
+  CheckCircle2,
+  Bell,
 } from 'lucide-react';
 import { useResourceStore } from '@/store/useResourceStore';
 import { useIncidentStore } from '@/store/useIncidentStore';
-import { useDispatchStore } from '@/store/useDispatchStore';
-import { getResourceLabel } from '@/data/mockData';
+import { useDispatchStore, useCurrentDispatch } from '@/store/useDispatchStore';
+import NotificationPanel from '@/components/NotificationPanel';
+import { getResourceLabel, getDispatchStatusLabel } from '@/data/mockData';
 import type { ResourceType, Resource } from '@/types';
 
 const tabs: { key: ResourceType | 'all'; label: string; icon: typeof Bus }[] = [
@@ -38,15 +42,27 @@ const typeIcons: Record<ResourceType, typeof Bus> = {
 
 export default function ResourceMatch() {
   const navigate = useNavigate();
-  const { resources, selectedResources, activeTab, setActiveTab, selectResource, deselectResource, isSelected, clearSelection } =
-    useResourceStore();
+  const {
+    resources,
+    selectedResources,
+    activeTab,
+    setActiveTab,
+    selectResource,
+    deselectResource,
+    isSelected,
+    clearSelection,
+  } = useResourceStore();
   const { currentIncident } = useIncidentStore();
-  const { createDispatchOrder } = useDispatchStore();
+  const { createDispatchOrder, getDispatchByIncident } = useDispatchStore();
+  const currentDispatch = useCurrentDispatch();
   const [showConfirm, setShowConfirm] = useState(false);
 
-  const filteredResources = activeTab === 'all'
-    ? resources
-    : resources.filter((r) => r.type === activeTab);
+  const existingDispatch = currentIncident
+    ? getDispatchByIncident(currentIncident.id)
+    : undefined;
+
+  const filteredResources =
+    activeTab === 'all' ? resources : resources.filter((r) => r.type === activeTab);
 
   const sortedResources = [...filteredResources].sort((a, b) => {
     if (a.status !== b.status) return a.status === 'available' ? -1 : 1;
@@ -60,7 +76,7 @@ export default function ResourceMatch() {
 
   const handleCreateDispatch = () => {
     if (!currentIncident || !canCreateOrder) return;
-    createDispatchOrder(currentIncident.id, selectedResources);
+    createDispatchOrder(currentIncident.id, selectedResources, currentIncident.route);
     setShowConfirm(false);
     navigate('/tracking');
   };
@@ -105,6 +121,31 @@ export default function ResourceMatch() {
         </h2>
         <p className="text-slate-400">查看附近可用资源，选择救援方案</p>
       </div>
+
+      {currentIncident && existingDispatch && (
+        <div className="mb-6 p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-xl">
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-emerald-500/20 rounded-lg flex items-center justify-center flex-shrink-0">
+                <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+              </div>
+              <div>
+                <p className="text-emerald-400 font-semibold">调度单已生成</p>
+                <p className="text-sm text-slate-400">
+                  单号 {existingDispatch.id} · 状态：{getDispatchStatusLabel(existingDispatch.status)}
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => navigate('/tracking')}
+              className="px-4 py-2 bg-emerald-500 hover:bg-emerald-400 text-white text-sm rounded-lg font-medium transition-colors flex items-center gap-2"
+            >
+              前往跟踪
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-4">
@@ -321,6 +362,16 @@ export default function ResourceMatch() {
             )}
           </div>
 
+          {currentDispatch && existingDispatch && (
+            <div className="bg-slate-800/50 backdrop-blur-sm rounded-2xl border border-slate-700/50 p-5">
+              <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                <Bell className="w-5 h-5 text-amber-400" />
+                通知状态
+              </h3>
+              <NotificationPanel notifications={existingDispatch.notifications} compact />
+            </div>
+          )}
+
           {currentIncident && (
             <div className="bg-slate-800/30 rounded-xl border border-slate-700/30 p-4">
               <h4 className="text-sm font-medium text-white mb-3">当前故障</h4>
@@ -328,6 +379,15 @@ export default function ResourceMatch() {
                 <div className="flex justify-between">
                   <span className="text-slate-400">车牌号</span>
                   <span className="text-white font-mono">{currentIncident.plateNumber}</span>
+                </div>
+                <div className="flex justify-between items-center gap-2">
+                  <span className="text-slate-400 flex items-center gap-1">
+                    <Route className="w-3.5 h-3.5" />
+                    线路
+                  </span>
+                  <span className="text-white text-right text-xs flex-1 ml-4 truncate">
+                    {currentIncident.routeLabel}
+                  </span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-slate-400">位置</span>
@@ -351,7 +411,7 @@ export default function ResourceMatch() {
             <div className="p-6 border-b border-slate-700/50">
               <h3 className="text-xl font-bold text-white">确认生成调度单</h3>
               <p className="text-sm text-slate-400 mt-1">
-                确认后将分别通知接驳司机、维修人员和学校值班老师
+                确认后将分别通知接驳司机、维修人员、拖车和学校值班老师
               </p>
             </div>
 

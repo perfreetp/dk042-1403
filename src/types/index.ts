@@ -10,16 +10,22 @@ export type NodeType = 'accepted' | 'departed' | 'arrived' | 'transferred' | 'to
 
 export type NodeStatus = 'pending' | 'completed' | 'overdue' | 'current';
 
+export type NotificationRole = 'driver' | 'repair' | 'tow' | 'supervisor' | 'school';
+
+export type NotificationStatus = 'notified' | 'unreachable' | 'confirmed';
+
 export interface Incident {
   id: string;
   plateNumber: string;
   route: string;
+  routeLabel: string;
   location: string;
   studentCount: number;
   faultType: string;
   isRoadOccupied: boolean;
   riskLevel: RiskLevel;
   createdAt: Date;
+  updatedAt: Date;
   status: IncidentStatus;
 }
 
@@ -35,12 +41,15 @@ export interface Resource {
   plateNumber?: string;
 }
 
-export interface DispatchOrder {
+export interface NotificationTarget {
   id: string;
-  incidentId: string;
-  selectedResources: Resource[];
-  createdAt: Date;
-  status: DispatchStatus;
+  role: NotificationRole;
+  label: string;
+  name: string;
+  phone: string;
+  status: NotificationStatus;
+  resourceId?: string;
+  updatedAt: Date;
 }
 
 export interface TimelineNode {
@@ -52,6 +61,17 @@ export interface TimelineNode {
   status: NodeStatus;
   remark?: string;
   expectedMinutes?: number;
+}
+
+export interface DispatchOrder {
+  id: string;
+  incidentId: string;
+  selectedResources: Resource[];
+  notifications: NotificationTarget[];
+  timelineNodes: TimelineNode[];
+  createdAt: Date;
+  updatedAt: Date;
+  status: DispatchStatus;
 }
 
 export interface RiskAssessment {

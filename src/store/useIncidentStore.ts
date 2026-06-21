@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import type { Incident, RiskAssessment } from '@/types';
 import { calculateRisk, generateId } from '@/utils';
-import { mockIncident } from '@/data/mockData';
+import { mockIncident, mockSecondIncident, getRouteLabel } from '@/data/mockData';
 
 interface IncidentState {
   currentIncident: Incident | null;
@@ -19,7 +19,7 @@ interface IncidentState {
   calculateRisk: (nearestDistance?: number) => void;
   submitIncident: () => Incident | null;
   resetForm: () => void;
-  setCurrentIncident: (incident: Incident) => void;
+  setCurrentIncident: (incidentId: string) => void;
 }
 
 const initialFormData = {
@@ -33,7 +33,7 @@ const initialFormData = {
 
 export const useIncidentStore = create<IncidentState>((set, get) => ({
   currentIncident: mockIncident,
-  incidents: [mockIncident],
+  incidents: [mockIncident, mockSecondIncident],
   formData: initialFormData,
   riskAssessment: null,
 
@@ -64,16 +64,19 @@ export const useIncidentStore = create<IncidentState>((set, get) => ({
       return null;
     }
 
+    const now = new Date();
     const newIncident: Incident = {
       id: generateId('INC'),
       plateNumber: formData.plateNumber,
       route: formData.route,
+      routeLabel: getRouteLabel(formData.route),
       location: formData.location,
       studentCount: formData.studentCount,
       faultType: formData.faultType,
       isRoadOccupied: formData.isRoadOccupied,
       riskLevel: riskAssessment.overall,
-      createdAt: new Date(),
+      createdAt: now,
+      updatedAt: now,
       status: 'pending',
     };
 
@@ -94,7 +97,11 @@ export const useIncidentStore = create<IncidentState>((set, get) => ({
     });
   },
 
-  setCurrentIncident: (incident) => {
-    set({ currentIncident: incident });
+  setCurrentIncident: (incidentId) => {
+    const { incidents } = get();
+    const incident = incidents.find((i) => i.id === incidentId);
+    if (incident) {
+      set({ currentIncident: incident });
+    }
   },
 }));

@@ -1,11 +1,12 @@
 import { NavLink } from 'react-router-dom';
-import { AlertTriangle, Users, MapPin, Clock, Bell, User } from 'lucide-react';
+import { AlertTriangle, Users, MapPin, Clock, Bell, User, ClipboardList } from 'lucide-react';
 import { useState, useEffect } from 'react';
 
 const navItems = [
   { to: '/incident', label: '故障接报', icon: AlertTriangle },
   { to: '/resources', label: '资源匹配', icon: Users },
   { to: '/tracking', label: '处置跟踪', icon: MapPin },
+  { to: '/tasks', label: '任务列表', icon: ClipboardList },
 ];
 
 export default function Navbar() {

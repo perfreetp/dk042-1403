@@ -1,4 +1,4 @@
-import type { Resource, Incident, TimelineNode } from '@/types';
+import type { Resource, Incident, TimelineNode, NotificationTarget, DispatchOrder } from '@/types';
 
 export const mockResources: Resource[] = [
   {
@@ -96,20 +96,45 @@ export const mockResources: Resource[] = [
   },
 ];
 
+export const mockSchoolContacts: { route: string; name: string; phone: string }[] = [
+  { route: 'route-1', name: '李老师（东校区）', phone: '158****1001' },
+  { route: 'route-2', name: '王老师（南校区）', phone: '158****1002' },
+  { route: 'route-3', name: '李老师（东校区）', phone: '158****1003' },
+  { route: 'route-4', name: '赵老师（西校区）', phone: '158****1004' },
+  { route: 'route-5', name: '钱老师（南校区）', phone: '158****1005' },
+];
+
 export const mockIncident: Incident = {
   id: 'INC-20240622-001',
   plateNumber: '京B·88888',
-  route: '3号线（东校区-市区）',
+  route: 'route-3',
+  routeLabel: '3号线（东校区-市区）',
   location: '和平路与建设大街交叉口向东200米',
   studentCount: 38,
   faultType: 'engine',
   isRoadOccupied: true,
   riskLevel: 'red',
   createdAt: new Date(Date.now() - 30 * 60 * 1000),
+  updatedAt: new Date(Date.now() - 8 * 60 * 1000),
   status: 'processing',
 };
 
-export const mockTimelineNodes: TimelineNode[] = [
+export const mockSecondIncident: Incident = {
+  id: 'INC-20240622-002',
+  plateNumber: '京B·66666',
+  route: 'route-1',
+  routeLabel: '1号线（东校区-西校区）',
+  location: '解放路高架桥下',
+  studentCount: 12,
+  faultType: 'tire',
+  isRoadOccupied: false,
+  riskLevel: 'yellow',
+  createdAt: new Date(Date.now() - 12 * 60 * 1000),
+  updatedAt: new Date(Date.now() - 12 * 60 * 1000),
+  status: 'pending',
+};
+
+const mockTimelineNodes: TimelineNode[] = [
   {
     id: 'node-1',
     type: 'accepted',
@@ -126,7 +151,7 @@ export const mockTimelineNodes: TimelineNode[] = [
     description: '接驳校车、维修人员已从各自位置出发',
     time: new Date(Date.now() - 20 * 60 * 1000),
     status: 'completed',
-    expectedMinutes: 10,
+    expectedMinutes: 5,
   },
   {
     id: 'node-3',
@@ -144,7 +169,7 @@ export const mockTimelineNodes: TimelineNode[] = [
     description: '学生已安全转移至接驳车辆',
     time: null,
     status: 'pending',
-    expectedMinutes: 20,
+    expectedMinutes: 25,
   },
   {
     id: 'node-5',
@@ -153,9 +178,64 @@ export const mockTimelineNodes: TimelineNode[] = [
     description: '故障车辆已拖离现场，道路恢复畅通',
     time: null,
     status: 'pending',
-    expectedMinutes: 45,
+    expectedMinutes: 50,
   },
 ];
+
+export const mockDispatchOrder: DispatchOrder = {
+  id: 'DISP-20240622-001',
+  incidentId: 'INC-20240622-001',
+  selectedResources: [
+    mockResources[0],
+    mockResources[5],
+    mockResources[7],
+  ],
+  notifications: [
+    {
+      id: 'ntf-1',
+      role: 'driver',
+      label: '接驳司机',
+      name: '张师傅（京A·12345）',
+      phone: '138****1234',
+      status: 'confirmed',
+      resourceId: 'bus-1',
+      updatedAt: new Date(Date.now() - 25 * 60 * 1000),
+    },
+    {
+      id: 'ntf-2',
+      role: 'repair',
+      label: '维修人员',
+      name: '安顺汽修·赵师傅',
+      phone: '133****2345',
+      status: 'notified',
+      resourceId: 'repair-1',
+      updatedAt: new Date(Date.now() - 25 * 60 * 1000),
+    },
+    {
+      id: 'ntf-3',
+      role: 'tow',
+      label: '拖车',
+      name: '快捷拖车·周师傅',
+      phone: '131****0123',
+      status: 'unreachable',
+      resourceId: 'tow-1',
+      updatedAt: new Date(Date.now() - 25 * 60 * 1000),
+    },
+    {
+      id: 'ntf-4',
+      role: 'school',
+      label: '学校值班老师',
+      name: '李老师（东校区）',
+      phone: '158****1003',
+      status: 'confirmed',
+      updatedAt: new Date(Date.now() - 24 * 60 * 1000),
+    },
+  ],
+  timelineNodes: mockTimelineNodes,
+  createdAt: new Date(Date.now() - 28 * 60 * 1000),
+  updatedAt: new Date(Date.now() - 8 * 60 * 1000),
+  status: 'in_progress',
+};
 
 export const faultTypes = [
   { value: 'engine', label: '发动机故障' },
@@ -174,6 +254,23 @@ export const routes = [
   { value: 'route-5', label: '5号线（南校区-开发区）' },
 ];
 
+export function getRouteLabel(routeValue: string): string {
+  return routes.find((r) => r.value === routeValue)?.label || '未指定线路';
+}
+
+export function getSchoolContact(routeValue: string): { name: string; phone: string } {
+  return (
+    mockSchoolContacts.find((c) => c.route === routeValue) || {
+      name: '学校值班室',
+      phone: '158****0000',
+    }
+  );
+}
+
+export function getFaultTypeLabel(value: string): string {
+  return faultTypes.find((f) => f.value === value)?.label || value;
+}
+
 export function getResourceLabel(type: string): string {
   const labels: Record<string, string> = {
     bus: '校车',
@@ -191,4 +288,137 @@ export function getRiskLabel(level: string): string {
     green: '低风险',
   };
   return labels[level] || level;
+}
+
+export function getNotificationStatusLabel(status: string): string {
+  const labels: Record<string, string> = {
+    notified: '已通知',
+    unreachable: '未接通',
+    confirmed: '已确认',
+  };
+  return labels[status] || status;
+}
+
+export function getDispatchStatusLabel(status: string): string {
+  const labels: Record<string, string> = {
+    created: '待派发',
+    dispatched: '已派发',
+    in_progress: '处置中',
+    completed: '已完成',
+  };
+  return labels[status] || status;
+}
+
+export function buildNotifications(
+  resources: Resource[],
+  routeValue: string
+): NotificationTarget[] {
+  const targets: NotificationTarget[] = [];
+  const now = new Date();
+
+  const bus = resources.find((r) => r.type === 'bus');
+  if (bus) {
+    targets.push({
+      id: `ntf-bus-${bus.id}`,
+      role: 'driver',
+      label: '接驳司机',
+      name: `${bus.contact}（${bus.plateNumber || bus.name}）`,
+      phone: bus.phone,
+      status: 'notified',
+      resourceId: bus.id,
+      updatedAt: now,
+    });
+  }
+
+  const repair = resources.find((r) => r.type === 'repair');
+  if (repair) {
+    targets.push({
+      id: `ntf-repair-${repair.id}`,
+      role: 'repair',
+      label: '维修人员',
+      name: `${repair.name}·${repair.contact}`,
+      phone: repair.phone,
+      status: 'notified',
+      resourceId: repair.id,
+      updatedAt: now,
+    });
+  }
+
+  const tow = resources.find((r) => r.type === 'tow');
+  if (tow) {
+    targets.push({
+      id: `ntf-tow-${tow.id}`,
+      role: 'tow',
+      label: '拖车',
+      name: `${tow.name}·${tow.contact}`,
+      phone: tow.phone,
+      status: 'notified',
+      resourceId: tow.id,
+      updatedAt: now,
+    });
+  }
+
+  const school = getSchoolContact(routeValue);
+  targets.push({
+    id: 'ntf-school',
+    role: 'school',
+    label: '学校值班老师',
+    name: school.name,
+    phone: school.phone,
+    status: 'notified',
+    updatedAt: now,
+  });
+
+  return targets;
+}
+
+export function buildInitialTimelineNodes(): TimelineNode[] {
+  const now = new Date();
+  return [
+    {
+      id: 'node-1',
+      type: 'accepted',
+      title: '已接单',
+      description: '调度员已接报故障，正在安排救援',
+      time: now,
+      status: 'completed',
+      expectedMinutes: 0,
+    },
+    {
+      id: 'node-2',
+      type: 'departed',
+      title: '已出发',
+      description: '接驳校车、维修人员已从各自位置出发',
+      time: null,
+      status: 'current',
+      expectedMinutes: 5,
+    },
+    {
+      id: 'node-3',
+      type: 'arrived',
+      title: '到达现场',
+      description: '救援车辆和人员已到达故障现场',
+      time: null,
+      status: 'pending',
+      expectedMinutes: 15,
+    },
+    {
+      id: 'node-4',
+      type: 'transferred',
+      title: '学生转运完成',
+      description: '学生已安全转移至接驳车辆',
+      time: null,
+      status: 'pending',
+      expectedMinutes: 25,
+    },
+    {
+      id: 'node-5',
+      type: 'towed',
+      title: '故障车拖离',
+      description: '故障车辆已拖离现场，道路恢复畅通',
+      time: null,
+      status: 'pending',
+      expectedMinutes: 50,
+    },
+  ];
 }

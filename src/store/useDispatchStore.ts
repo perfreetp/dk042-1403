@@ -1,150 +1,188 @@
 import { create } from 'zustand';
-import type { DispatchOrder, TimelineNode, Resource } from '@/types';
-import { mockTimelineNodes } from '@/data/mockData';
-import { generateId } from '@/utils';
+import type {
+  DispatchOrder,
+  TimelineNode,
+  Resource,
+  NotificationTarget,
+  NotificationStatus,
+  NodeStatus,
+} from '@/types';
+import {
+  mockDispatchOrder,
+  buildNotifications,
+  buildInitialTimelineNodes,
+} from '@/data/mockData';
+import { generateId, computeNodeOverdue } from '@/utils';
 
 interface DispatchState {
   dispatchOrders: DispatchOrder[];
-  currentDispatch: DispatchOrder | null;
-  timelineNodes: TimelineNode[];
-  createDispatchOrder: (incidentId: string, resources: Resource[]) => DispatchOrder;
+  currentDispatchId: string | null;
+  createDispatchOrder: (
+    incidentId: string,
+    resources: Resource[],
+    routeValue: string
+  ) => DispatchOrder;
   confirmNode: (nodeId: string, remark?: string) => void;
-  updateNodeStatus: () => void;
-  getOverdueNodes: () => TimelineNode[];
+  updateNotificationStatus: (notificationId: string, status: NotificationStatus) => void;
+  renotify: (notificationId: string) => void;
+  setCurrentDispatch: (dispatchId: string) => void;
+  getDispatchByIncident: (incidentId: string) => DispatchOrder | undefined;
+  recomputeOverdue: () => void;
   resetDispatch: () => void;
 }
 
-export const useDispatchStore = create<DispatchState>((set, get) => ({
-  dispatchOrders: [],
-  currentDispatch: null,
-  timelineNodes: mockTimelineNodes,
+function recomputeNodesStatus(nodes: TimelineNode[]): TimelineNode[] {
+  const computed = computeNodeOverdue(nodes);
+  const firstUncompletedIndex = computed.findIndex((n) => n.status !== 'completed');
+  return computed.map((node, index) => {
+    if (node.status === 'completed') return node;
+    if (index === firstUncompletedIndex) {
+      if (node.status === 'overdue') return node;
+      return { ...node, status: 'current' as NodeStatus };
+    }
+    return { ...node, status: node.status === 'overdue' ? 'overdue' : 'pending' as NodeStatus };
+  });
+}
 
-  createDispatchOrder: (incidentId, resources) => {
+export const useDispatchStore = create<DispatchState>((set, get) => ({
+  dispatchOrders: [mockDispatchOrder],
+  currentDispatchId: mockDispatchOrder.id,
+
+  createDispatchOrder: (incidentId, resources, routeValue) => {
+    const notifications = buildNotifications(resources, routeValue);
+    const initialNodes = recomputeNodesStatus(buildInitialTimelineNodes());
+    const now = new Date();
+
     const newOrder: DispatchOrder = {
       id: generateId('DISP'),
       incidentId,
       selectedResources: resources,
-      createdAt: new Date(),
-      status: 'created',
+      notifications,
+      timelineNodes: initialNodes,
+      createdAt: now,
+      updatedAt: now,
+      status: 'dispatched',
     };
-
-    const initialNodes: TimelineNode[] = [
-      {
-        id: 'node-1',
-        type: 'accepted',
-        title: '已接单',
-        description: '调度员已接报故障，正在安排救援',
-        time: new Date(),
-        status: 'completed',
-        expectedMinutes: 0,
-      },
-      {
-        id: 'node-2',
-        type: 'departed',
-        title: '已出发',
-        description: '接驳校车、维修人员已从各自位置出发',
-        time: null,
-        status: 'pending',
-        expectedMinutes: 5,
-      },
-      {
-        id: 'node-3',
-        type: 'arrived',
-        title: '到达现场',
-        description: '救援车辆和人员已到达故障现场',
-        time: null,
-        status: 'pending',
-        expectedMinutes: 15,
-      },
-      {
-        id: 'node-4',
-        type: 'transferred',
-        title: '学生转运完成',
-        description: '学生已安全转移至接驳车辆',
-        time: null,
-        status: 'pending',
-        expectedMinutes: 25,
-      },
-      {
-        id: 'node-5',
-        type: 'towed',
-        title: '故障车拖离',
-        description: '故障车辆已拖离现场，道路恢复畅通',
-        time: null,
-        status: 'pending',
-        expectedMinutes: 50,
-      },
-    ];
 
     set((state) => ({
       dispatchOrders: [newOrder, ...state.dispatchOrders],
-      currentDispatch: newOrder,
-      timelineNodes: initialNodes,
+      currentDispatchId: newOrder.id,
     }));
 
     return newOrder;
   },
 
   confirmNode: (nodeId, remark) => {
-    set((state) => {
-      const updatedNodes = state.timelineNodes.map((node, index) => {
-        if (node.id === nodeId) {
-          return {
-            ...node,
-            time: new Date(),
-            status: 'completed' as const,
-            remark,
-          };
-        }
-        const prevNode = state.timelineNodes[index - 1];
-        if (prevNode && prevNode.id === nodeId && node.status === 'pending') {
-          return { ...node, status: 'current' as const };
-        }
-        return node;
-      });
+    const { currentDispatchId } = get();
+    if (!currentDispatchId) return;
 
-      const allCompleted = updatedNodes.every((n) => n.status === 'completed');
+    set((state) => ({
+      dispatchOrders: state.dispatchOrders.map((order) => {
+        if (order.id !== currentDispatchId) return order;
 
-      return {
-        timelineNodes: updatedNodes,
-        currentDispatch: state.currentDispatch
-          ? {
-              ...state.currentDispatch,
-              status: allCompleted ? 'completed' : 'in_progress',
-            }
-          : null,
-      };
-    });
-  },
-
-  updateNodeStatus: () => {
-    const { timelineNodes } = get();
-    const now = new Date();
-
-    set({
-      timelineNodes: timelineNodes.map((node) => {
-        if (node.status === 'pending' && node.expectedMinutes) {
-          const firstNode = timelineNodes[0];
-          if (firstNode?.time) {
-            const elapsed = (now.getTime() - firstNode.time.getTime()) / 60000;
-            if (elapsed > node.expectedMinutes * 1.2) {
-              return { ...node, status: 'overdue' as const };
-            }
+        const confirmedNodes = order.timelineNodes.map((node) => {
+          if (node.id === nodeId) {
+            return {
+              ...node,
+              time: new Date(),
+              status: 'completed' as NodeStatus,
+              remark,
+            };
           }
-        }
-        return node;
+          return node;
+        });
+
+        const recomputed = recomputeNodesStatus(confirmedNodes);
+        const allCompleted = recomputed.every((n) => n.status === 'completed');
+
+        return {
+          ...order,
+          timelineNodes: recomputed,
+          status: allCompleted ? 'completed' as const : 'in_progress' as const,
+          updatedAt: new Date(),
+        };
       }),
-    });
+    }));
   },
 
-  getOverdueNodes: () => {
-    return get().timelineNodes.filter((n) => n.status === 'overdue');
+  updateNotificationStatus: (notificationId, status) => {
+    const { currentDispatchId } = get();
+    if (!currentDispatchId) return;
+
+    set((state) => ({
+      dispatchOrders: state.dispatchOrders.map((order) => {
+        if (order.id !== currentDispatchId) return order;
+        return {
+          ...order,
+          notifications: order.notifications.map((ntf) =>
+            ntf.id === notificationId
+              ? { ...ntf, status, updatedAt: new Date() }
+              : ntf
+          ),
+          updatedAt: new Date(),
+        };
+      }),
+    }));
+  },
+
+  renotify: (notificationId) => {
+    const { currentDispatchId } = get();
+    if (!currentDispatchId) return;
+
+    set((state) => ({
+      dispatchOrders: state.dispatchOrders.map((order) => {
+        if (order.id !== currentDispatchId) return order;
+        return {
+          ...order,
+          notifications: order.notifications.map((ntf) =>
+            ntf.id === notificationId
+              ? { ...ntf, status: 'notified' as NotificationStatus, updatedAt: new Date() }
+              : ntf
+          ),
+          updatedAt: new Date(),
+        };
+      }),
+    }));
+  },
+
+  setCurrentDispatch: (dispatchId) => {
+    set({ currentDispatchId: dispatchId });
+  },
+
+  getDispatchByIncident: (incidentId) => {
+    return get().dispatchOrders.find((o) => o.incidentId === incidentId);
+  },
+
+  recomputeOverdue: () => {
+    set((state) => ({
+      dispatchOrders: state.dispatchOrders.map((order) => {
+        if (order.status === 'completed') return order;
+        const recomputed = recomputeNodesStatus(order.timelineNodes);
+        const hasChange = recomputed.some(
+          (n, i) => n.status !== order.timelineNodes[i]?.status
+        );
+        if (!hasChange) return order;
+        return { ...order, timelineNodes: recomputed, updatedAt: new Date() };
+      }),
+    }));
   },
 
   resetDispatch: () => {
-    set({
-      currentDispatch: null,
-      timelineNodes: [],
-    });
+    set({ currentDispatchId: null });
   },
 }));
+
+export function useCurrentDispatch(): DispatchOrder | null {
+  const { dispatchOrders, currentDispatchId } = useDispatchStore();
+  return dispatchOrders.find((o) => o.id === currentDispatchId) || null;
+}
+
+export function useDispatchNotifications(): NotificationTarget[] {
+  const current = useCurrentDispatch();
+  return current?.notifications || [];
+}
+
+export function useDispatchTimeline(): TimelineNode[] {
+  const current = useCurrentDispatch();
+  return current?.timelineNodes || [];
+}

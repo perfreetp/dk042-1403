@@ -12,12 +12,12 @@ import {
   Zap,
   Navigation,
   ChevronRight,
+  Route,
 } from 'lucide-react';
 import { useIncidentStore } from '@/store/useIncidentStore';
 import { useResourceStore } from '@/store/useResourceStore';
 import RiskBadge from '@/components/RiskBadge';
-import { faultTypes, routes } from '@/data/mockData';
-import { getRiskLabel } from '@/data/mockData';
+import { faultTypes, routes, getRiskLabel } from '@/data/mockData';
 
 export default function IncidentReport() {
   const navigate = useNavigate();
@@ -26,8 +26,10 @@ export default function IncidentReport() {
   const { resources } = useResourceStore();
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  const nearestDistance = resources.filter((r) => r.status === 'available').sort((a, b) => a.distance - b.distance)[0]
-    ?.distance || 5;
+  const nearestDistance =
+    resources
+      .filter((r) => r.status === 'available')
+      .sort((a, b) => a.distance - b.distance)[0]?.distance || 5;
 
   useEffect(() => {
     calculateRisk(nearestDistance);
@@ -36,6 +38,7 @@ export default function IncidentReport() {
   const validate = () => {
     const newErrors: Record<string, string> = {};
     if (!formData.plateNumber.trim()) newErrors.plateNumber = '请输入车牌号';
+    if (!formData.route) newErrors.route = '请选择运营线路';
     if (!formData.location.trim()) newErrors.location = '请输入当前位置';
     if (formData.studentCount < 0) newErrors.studentCount = '学生人数不能为负数';
     if (!formData.faultType) newErrors.faultType = '请选择故障类型';
@@ -61,6 +64,8 @@ export default function IncidentReport() {
       });
     }
   };
+
+  const selectedRouteLabel = routes.find((r) => r.value === formData.route)?.label;
 
   const riskCards = [
     {
@@ -132,20 +137,33 @@ export default function IncidentReport() {
 
               <div>
                 <label className="block text-sm font-medium text-slate-300 mb-1.5">
-                  运营线路
+                  运营线路 <span className="text-red-400">*</span>
                 </label>
-                <select
-                  value={formData.route}
-                  onChange={(e) => handleInputChange('route', e.target.value)}
-                  className="w-full px-4 py-2.5 bg-slate-900/50 border border-slate-600/50 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500/50 transition-all appearance-none cursor-pointer"
-                >
-                  <option value="">请选择线路</option>
-                  {routes.map((r) => (
-                    <option key={r.value} value={r.value}>
-                      {r.label}
-                    </option>
-                  ))}
-                </select>
+                <div className="relative">
+                  <Route className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500 pointer-events-none" />
+                  <select
+                    value={formData.route}
+                    onChange={(e) => handleInputChange('route', e.target.value)}
+                    className={`w-full pl-10 pr-4 py-2.5 bg-slate-900/50 border rounded-xl text-white focus:outline-none focus:ring-2 transition-all appearance-none cursor-pointer ${
+                      errors.route
+                        ? 'border-red-500/50 focus:ring-red-500/30'
+                        : 'border-slate-600/50 focus:ring-blue-500/30 focus:border-blue-500/50'
+                    }`}
+                  >
+                    <option value="">请选择线路</option>
+                    {routes.map((r) => (
+                      <option key={r.value} value={r.value}>
+                        {r.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                {errors.route && (
+                  <p className="text-xs text-red-400 mt-1 flex items-center gap-1">
+                    <XCircle className="w-3 h-3" />
+                    {errors.route}
+                  </p>
+                )}
               </div>
 
               <div className="md:col-span-2">
@@ -352,8 +370,15 @@ export default function IncidentReport() {
           <div className="bg-slate-800/30 rounded-xl border border-slate-700/30 p-4">
             <p className="text-xs text-slate-500 leading-relaxed">
               <span className="text-slate-400 font-medium">提示：</span>
-              系统将根据学生人数、是否占道、故障类型及最近资源距离自动计算风险等级，请确保信息准确。
+              系统将根据学生人数、是否占道、故障类型及最近资源距离自动计算风险等级，请确保信息准确。线路信息将贯穿后续资源匹配与处置跟踪。
             </p>
+            {selectedRouteLabel && (
+              <div className="mt-3 pt-3 border-t border-slate-700/30 flex items-center gap-2">
+                <Route className="w-4 h-4 text-blue-400" />
+                <span className="text-xs text-slate-400">已选线路：</span>
+                <span className="text-xs text-white font-medium">{selectedRouteLabel}</span>
+              </div>
+            )}
           </div>
         </div>
       </div>

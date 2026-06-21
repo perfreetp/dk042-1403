@@ -1,4 +1,4 @@
-import type { RiskAssessment, RiskLevel } from '@/types';
+import type { RiskAssessment, RiskLevel, TimelineNode } from '@/types';
 
 export function calculateRisk(
   studentCount: number,
@@ -103,6 +103,15 @@ export function formatDateTime(date: Date): string {
   return `${month}-${day} ${hours}:${minutes}`;
 }
 
+export function formatDateTimeWithSeconds(date: Date): string {
+  const month = (date.getMonth() + 1).toString().padStart(2, '0');
+  const day = date.getDate().toString().padStart(2, '0');
+  const hours = date.getHours().toString().padStart(2, '0');
+  const minutes = date.getMinutes().toString().padStart(2, '0');
+  const seconds = date.getSeconds().toString().padStart(2, '0');
+  return `${month}-${day} ${hours}:${minutes}:${seconds}`;
+}
+
 export function getRelativeTime(date: Date): string {
   const now = new Date();
   const diffMs = now.getTime() - date.getTime();
@@ -116,6 +125,66 @@ export function getRelativeTime(date: Date): string {
   return `${days}天前`;
 }
 
+export function getDurationMins(from: Date, to: Date = new Date()): number {
+  return Math.floor((to.getTime() - from.getTime()) / 60000);
+}
+
 export function generateId(prefix: string): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+}
+
+export function getCurrentNode(nodes: TimelineNode[]): TimelineNode | null {
+  const firstUncompleted = nodes.find((n) => n.status !== 'completed');
+  return firstUncompleted || null;
+}
+
+export function getLastCompletedTime(nodes: TimelineNode[]): Date | null {
+  for (let i = nodes.length - 1; i >= 0; i--) {
+    if (nodes[i].status === 'completed' && nodes[i].time) {
+      return nodes[i].time as Date;
+    }
+  }
+  return null;
+}
+
+export function computeNodeOverdue(nodes: TimelineNode[]): TimelineNode[] {
+  const now = new Date();
+  const lastCompletedTime = getLastCompletedTime(nodes) || nodes[0]?.time || now;
+  const baseTime = lastCompletedTime || now;
+
+  return nodes.map((node) => {
+    if (node.status === 'completed') {
+      return node;
+    }
+    if (node.status === 'current' && node.expectedMinutes) {
+      const elapsed = getDurationMins(baseTime, now);
+      if (elapsed > node.expectedMinutes) {
+        return { ...node, status: 'overdue' as const };
+      }
+    }
+    return node;
+  });
+}
+
+export function getMostUrgentNodeId(nodes: TimelineNode[]): string | null {
+  const overdue = nodes.find((n) => n.status === 'overdue');
+  if (overdue) return overdue.id;
+  const current = nodes.find((n) => n.status === 'current');
+  if (current) return current.id;
+  return null;
+}
+
+export function getEstimatedArrivalTime(
+  nodes: TimelineNode[],
+  currentNode: TimelineNode | null
+): Date | null {
+  if (!currentNode || !currentNode.expectedMinutes) return null;
+  const baseTime = getLastCompletedTime(nodes) || new Date();
+  return new Date(baseTime.getTime() + currentNode.expectedMinutes * 60000);
+}
+
+export function getOverdueMins(node: TimelineNode, nodes: TimelineNode[]): number {
+  if (node.status !== 'overdue' || !node.expectedMinutes) return 0;
+  const baseTime = getLastCompletedTime(nodes) || new Date();
+  return Math.max(0, getDurationMins(baseTime) - node.expectedMinutes);
 }

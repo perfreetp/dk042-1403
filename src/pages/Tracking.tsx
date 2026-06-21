@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   MapPin,
   Clock,
@@ -10,30 +10,46 @@ import {
   CheckCircle,
   RefreshCw,
   MessageSquare,
+  Route,
+  Navigation,
+  Timer,
+  ChevronDown,
 } from 'lucide-react';
 import { useIncidentStore } from '@/store/useIncidentStore';
-import { useDispatchStore } from '@/store/useDispatchStore';
-import { useResourceStore } from '@/store/useResourceStore';
+import { useDispatchStore, useCurrentDispatch, useDispatchTimeline } from '@/store/useDispatchStore';
 import Timeline from '@/components/Timeline';
 import RiskBadge from '@/components/RiskBadge';
-import { getRelativeTime, formatDateTime } from '@/utils';
-import { faultTypes, getResourceLabel } from '@/data/mockData';
+import NotificationPanel from '@/components/NotificationPanel';
+import {
+  getRelativeTime,
+  formatDateTime,
+  formatTime,
+  getCurrentNode,
+  getEstimatedArrivalTime,
+  getMostUrgentNodeId,
+} from '@/utils';
+import { getResourceLabel, getDispatchStatusLabel, getFaultTypeLabel } from '@/data/mockData';
 
 export default function Tracking() {
   const { currentIncident } = useIncidentStore();
-  const { timelineNodes, confirmNode, updateNodeStatus, getOverdueNodes } = useDispatchStore();
-  const { selectedResources } = useResourceStore();
+  const { confirmNode, recomputeOverdue } = useDispatchStore();
+  const currentDispatch = useCurrentDispatch();
+  const timelineNodes = useDispatchTimeline();
   const [remark, setRemark] = useState('');
   const [showRemarkInput, setShowRemarkInput] = useState<string | null>(null);
-
-  const overdueNodes = getOverdueNodes();
+  const urgentRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const timer = setInterval(() => {
-      updateNodeStatus();
-    }, 60000);
+      recomputeOverdue();
+    }, 30000);
     return () => clearInterval(timer);
-  }, [updateNodeStatus]);
+  }, [recomputeOverdue]);
+
+  const currentNode = getCurrentNode(timelineNodes);
+  const estimatedArrival = getEstimatedArrivalTime(timelineNodes, currentNode);
+  const mostUrgentId = getMostUrgentNodeId(timelineNodes);
+  const overdueNodes = timelineNodes.filter((n) => n.status === 'overdue');
 
   const handleConfirm = (nodeId: string) => {
     if (showRemarkInput === nodeId && remark.trim()) {
@@ -51,9 +67,11 @@ export default function Tracking() {
     setShowRemarkInput(null);
   };
 
-  const getFaultTypeLabel = (value: string) => {
-    return faultTypes.find((f) => f.value === value)?.label || value;
-  };
+  const scrollToUrgent = useCallback(() => {
+    if (mostUrgentId && urgentRef.current) {
+      urgentRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }, [mostUrgentId]);
 
   const completedCount = timelineNodes.filter((n) => n.status === 'completed').length;
   const totalCount = timelineNodes.length;
@@ -86,19 +104,49 @@ export default function Tracking() {
       </div>
 
       {overdueNodes.length > 0 && (
-        <div className="mb-6 p-4 bg-red-500/10 border border-red-500/30 rounded-xl flex items-center gap-4">
+        <div className="mb-6 p-4 bg-red-500/10 border border-red-500/30 rounded-xl flex items-center gap-4 cursor-pointer hover:bg-red-500/15 transition-colors" onClick={scrollToUrgent}>
           <div className="w-10 h-10 bg-red-500/20 rounded-full flex items-center justify-center flex-shrink-0 animate-pulse">
             <Bell className="w-5 h-5 text-red-400" />
           </div>
           <div className="flex-1">
-            <p className="text-red-400 font-semibold">超时提醒</p>
+            <p className="text-red-400 font-semibold">
+              超时提醒：{overdueNodes.length} 个节点已超时
+            </p>
             <p className="text-sm text-red-300/80">
-              有 {overdueNodes.length} 个节点已超时未反馈，请尽快确认
+              {overdueNodes.map((n) => n.title).join('、')} — 点击直接前往处理
             </p>
           </div>
-          <button className="px-4 py-2 bg-red-500 hover:bg-red-400 text-white text-sm rounded-lg font-medium transition-colors">
-            立即确认
-          </button>
+          <div className="flex items-center gap-2 text-red-400 text-sm font-medium">
+            立即处理
+            <ChevronDown className="w-4 h-4 rotate-180" />
+          </div>
+        </div>
+      )}
+
+      {currentNode && !overdueNodes.length && (
+        <div className="mb-6 p-4 bg-blue-500/10 border border-blue-500/30 rounded-xl flex items-center gap-4">
+          <div className="w-10 h-10 bg-blue-500/20 rounded-full flex items-center justify-center flex-shrink-0">
+            <Navigation className="w-5 h-5 text-blue-400" />
+          </div>
+          <div className="flex-1">
+            <p className="text-blue-400 font-semibold">
+              当前节点：{currentNode.title}
+            </p>
+            <p className="text-sm text-slate-400">
+              {currentNode.description}
+              {estimatedArrival && (
+                <span className="ml-3 text-blue-300">
+                  预计 {formatTime(estimatedArrival)} 到达
+                </span>
+              )}
+            </p>
+          </div>
+          <div className="flex items-center gap-2 px-3 py-1.5 bg-blue-500/20 rounded-lg">
+            <Timer className="w-4 h-4 text-blue-400" />
+            <span className="text-sm text-blue-300 font-mono">
+              {currentNode.expectedMinutes ? `${currentNode.expectedMinutes}分钟` : '--'}
+            </span>
+          </div>
         </div>
       )}
 
@@ -113,9 +161,19 @@ export default function Tracking() {
                 </div>
                 <p className="text-sm text-slate-400">
                   故障单号：{currentIncident.id}
+                  {currentIncident.routeLabel && (
+                    <span className="ml-3 inline-flex items-center gap-1">
+                      <Route className="w-3.5 h-3.5" />
+                      {currentIncident.routeLabel}
+                    </span>
+                  )}
                 </p>
               </div>
-              <button className="p-2 text-slate-400 hover:text-white hover:bg-slate-700/50 rounded-lg transition-colors">
+              <button
+                onClick={() => recomputeOverdue()}
+                className="p-2 text-slate-400 hover:text-white hover:bg-slate-700/50 rounded-lg transition-colors"
+                title="刷新状态"
+              >
                 <RefreshCw className="w-5 h-5" />
               </button>
             </div>
@@ -133,11 +191,13 @@ export default function Tracking() {
               </div>
             </div>
 
-            <Timeline
-              nodes={timelineNodes}
-              onConfirm={handleConfirm}
-              showConfirmButton={true}
-            />
+            <div ref={urgentRef}>
+              <Timeline
+                nodes={timelineNodes}
+                onConfirm={handleConfirm}
+                showConfirmButton={true}
+              />
+            </div>
 
             {showRemarkInput && (
               <div className="mt-4 p-4 bg-slate-900/50 rounded-xl border border-slate-600/50">
@@ -190,6 +250,16 @@ export default function Tracking() {
                 </p>
               </div>
 
+              {currentIncident.routeLabel && (
+                <div>
+                  <p className="text-xs text-slate-500 mb-1">运营线路</p>
+                  <div className="flex items-center gap-2">
+                    <Route className="w-4 h-4 text-blue-400" />
+                    <p className="text-sm text-white font-medium">{currentIncident.routeLabel}</p>
+                  </div>
+                </div>
+              )}
+
               <div>
                 <p className="text-xs text-slate-500 mb-1">当前位置</p>
                 <div className="flex items-start gap-2">
@@ -239,20 +309,31 @@ export default function Tracking() {
                   已过去 {getRelativeTime(currentIncident.createdAt)}
                 </p>
               </div>
+
+              {currentDispatch && (
+                <div className="pt-3 border-t border-slate-700/50">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-slate-400">调度状态</span>
+                    <span className="text-blue-400 font-medium">{getDispatchStatusLabel(currentDispatch.status)}</span>
+                  </div>
+                  <div className="flex justify-between text-sm mt-2">
+                    <span className="text-slate-400">调度单号</span>
+                    <span className="text-white font-mono text-xs">{currentDispatch.id}</span>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 
-          <div className="bg-slate-800/50 backdrop-blur-sm rounded-2xl border border-slate-700/50 p-5">
-            <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-              <Phone className="w-5 h-5 text-emerald-400" />
-              救援资源
-            </h3>
+          {currentDispatch && currentDispatch.selectedResources.length > 0 && (
+            <div className="bg-slate-800/50 backdrop-blur-sm rounded-2xl border border-slate-700/50 p-5">
+              <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                <Phone className="w-5 h-5 text-emerald-400" />
+                救援资源
+              </h3>
 
-            {selectedResources.length === 0 ? (
-              <p className="text-sm text-slate-500 text-center py-4">暂无调度资源</p>
-            ) : (
               <div className="space-y-3">
-                {selectedResources.map((resource) => (
+                {currentDispatch.selectedResources.map((resource) => (
                   <div
                     key={resource.id}
                     className="p-3 bg-slate-900/50 rounded-xl border border-slate-700/50"
@@ -272,13 +353,23 @@ export default function Tracking() {
                   </div>
                 ))}
               </div>
-            )}
-          </div>
+            </div>
+          )}
+
+          {currentDispatch && currentDispatch.notifications.length > 0 && (
+            <div className="bg-slate-800/50 backdrop-blur-sm rounded-2xl border border-slate-700/50 p-5">
+              <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                <Bell className="w-5 h-5 text-amber-400" />
+                通知状态
+              </h3>
+              <NotificationPanel notifications={currentDispatch.notifications} compact />
+            </div>
+          )}
 
           <div className="bg-slate-800/30 rounded-xl border border-slate-700/30 p-4">
             <p className="text-xs text-slate-500 leading-relaxed">
               <span className="text-slate-400 font-medium">值班提示：</span>
-              请密切关注各节点超时情况，及时与相关人员确认进度，确保学生安全转运。
+              请密切关注各节点超时情况，及时与相关人员确认进度，确保学生安全转运。点击顶部超时提醒可直接定位到最紧急节点。
             </p>
           </div>
         </div>
